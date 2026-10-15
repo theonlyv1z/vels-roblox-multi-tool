@@ -1383,6 +1383,7 @@ function openRowMenu(anchor, id) {
     '-',
     { icon: 'cookie', label: 'Copy cookie', on: () => send('copy', { id, what: 'cookie' }) },
     { icon: 'user', label: 'Copy username', on: () => send('copy', { id, what: 'username' }) },
+    { icon: 'hash', label: 'Copy user ID', meta: String(id), on: () => send('copy', { id, what: 'userid' }) },
     { icon: 'key', label: 'Copy password', disabled: !a.hasPassword, on: () => send('copy', { id, what: 'password' }) },
     { icon: 'key', label: 'Copy user:pass', disabled: !a.hasPassword, on: () => send('copy', { id, what: 'userpass' }) },
     '-',

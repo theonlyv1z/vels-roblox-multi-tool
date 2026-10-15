@@ -938,11 +938,13 @@ static void HandlePageMessage(const std::string& text) {
     } else if (cmd == "copy") {
         std::string what = m["what"].str();
         std::string uname, pass, cookie;
+        long long uid = 0;
         {
             std::lock_guard<std::mutex> lock(backend::accountsMutex);
             int idx = FindUserIndexLocked(m["id"].i64());
             if (idx < 0) return;
             uname = backend::accounts[idx].username;
+            uid = backend::accounts[idx].userId;
             pass = backend::accounts[idx].password;
             cookie = backend::accounts[idx].cookie;
         }
@@ -950,6 +952,7 @@ static void HandlePageMessage(const std::string& text) {
         if (what == "cookie") { label = "cookie"; if (!cookie.empty()) value = ".ROBLOSECURITY=" + cookie; }
         else if (what == "userpass") { label = "user:pass"; if (!pass.empty()) value = uname + ":" + pass; }
         else if (what == "username") { label = "username"; value = uname; }
+        else if (what == "userid") { label = "user ID"; if (uid > 0) value = std::to_string(uid); }
         else if (what == "password") { label = "password"; value = pass; }
         else return;
         if (value.empty()) backend::Log("[!] No " + label + " saved for " + uname + ".");
