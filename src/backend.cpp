@@ -3646,6 +3646,18 @@ std::string RobuxPrepare(long long fromId, const std::string& recipientRaw) {
         ",\"balance\":" + std::to_string(balance) + ",\"perTransferLimit\":" + std::to_string(perTransfer) + "}";
 }
 
+static long long IsoToEpochMs(const std::string& iso) {
+    static const std::regex re("(\\d{4})-(\\d{2})-(\\d{2})T(\\d{2}):(\\d{2}):(\\d{2})(?:\\.(\\d{1,3}))?");
+    std::smatch m;
+    if (!std::regex_search(iso, m, re)) return 0;
+    std::tm t = {};
+    t.tm_year = std::stoi(m[1]) - 1900; t.tm_mon = std::stoi(m[2]) - 1; t.tm_mday = std::stoi(m[3]);
+    t.tm_hour = std::stoi(m[4]); t.tm_min = std::stoi(m[5]); t.tm_sec = std::stoi(m[6]);
+    long long ms = 0;
+    if (m[7].matched) { std::string f = m[7].str(); while (f.size() < 3) f += '0'; ms = std::stoll(f); }
+    return (long long)_mkgmtime(&t) * 1000 + ms;
+}
+
 std::string RobuxInfo(long long fromId) {
     RobloxAccount a;
     std::string head = "{\"type\":\"robuxInfo\",\"from\":" + std::to_string(fromId);
@@ -3655,12 +3667,61 @@ std::string RobuxInfo(long long fromId) {
     if (c.status == 401) return head + ",\"ok\":false,\"error\":\"This account's saved login has expired.\"}";
     json::Value cj;
     if (c.ok && c.status == 200 && json::Parse(c.body, cj)) balance = cj["robux"].i64(-1);
-    std::string limits = "{}";
+
     HttpResponse l = HttpRequest(L"apis.roblox.com", L"/transfer/v1/robux-transfer/user-transfer-limit", L"GET", a.cookie, {}, "");
     json::Value lj;
-    if (l.ok && l.status == 200 && json::Parse(l.body, lj) && lj.type == json::Value::Object) limits = l.body;
-    else if (l.status == 403) return head + ",\"ok\":false,\"error\":\"This account can't send Robux right now.\",\"balance\":" + std::to_string(balance) + "}";
-    return head + ",\"ok\":true,\"balance\":" + std::to_string(balance) + ",\"limits\":" + limits + "}";
+    if (l.status == 403) return head + ",\"ok\":false,\"error\":\"This account can't send Robux right now.\",\"balance\":" + std::to_string(balance) + "}";
+    if (!l.ok || l.status != 200 || !json::Parse(l.body, lj)) return head + ",\"ok\":false,\"error\":\"Couldn't read this account's transfer limits.\",\"balance\":" + std::to_string(balance) + "}";
+    long long dailyLimit = lj["dailyLimit"].i64(-1), monthlyLimit = lj["monthlyLimit"].i64(-1), perTransfer = lj["perTransferLimit"].i64(-1);
+
+    const long long DAY = 24LL * 60 * 60 * 1000, MONTH = 30 * DAY;
+    long long now = (long long)std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
+    struct Sent { long long amount = 0; long long created = 0; };
+    std::map<std::string, Sent> grouped;
+    bool historyOk = true;
+    std::string cursor;
+    for (int page = 0; page < 20; ++page) {
+        std::wstring path = L"/transaction-records/v1/users/" + std::to_wstring(a.userId) +
+            L"/transactions?limit=100&transactionType=CurrencyTransfer&itemPricingType=PaidAndLimited&cursor=" + Widen(cursor);
+        HttpResponse t = HttpRequest(L"apis.roblox.com", path, L"GET", a.cookie, {}, "");
+        json::Value tj;
+        if (!t.ok || t.status != 200 || !json::Parse(t.body, tj)) { historyOk = false; break; }
+        long long oldest = now;
+        for (const auto& tx : tj["data"].a) {
+            const json::Value& d = tx["details"];
+            long long created = IsoToEpochMs(tx["created"].str());
+            if (created > 0) oldest = std::min(oldest, created);
+            const json::Value& sid = d["senderTargetId"];
+            long long sender = sid.type == json::Value::String ? std::atoll(sid.s.c_str()) : sid.i64();
+            std::string role = d["transferRole"].str();
+            if (sender != a.userId || (role != "Sender" && role != "SenderRefund")) continue;
+            long long amount = tx["currency"]["amount"].i64();
+            std::string key = d["transferRequestId"].str();
+            if (key.empty()) key = tx["idHash"].str();
+            if (key.empty()) key = tx["created"].str() + ":" + std::to_string(amount);
+            Sent& s = grouped[key];
+            if (s.created == 0 || (created > 0 && created < s.created)) s.created = created;
+            if (role == "Sender" && amount < 0) s.amount += -amount;
+            else if (role == "SenderRefund" && amount > 0) s.amount -= amount;
+        }
+        cursor = tj["nextPageCursor"].str();
+        if (cursor.empty() || oldest < now - MONTH) break;
+    }
+
+    long long daySent = 0, monthSent = 0, dayFree = 0, monthFree = 0;
+    for (const auto& kv : grouped) {
+        const Sent& s = kv.second;
+        if (s.amount <= 0 || s.created <= 0) continue;
+        if (s.created >= now - DAY) { daySent += s.amount; long long f = s.created + DAY; if (!dayFree || f < dayFree) dayFree = f; }
+        if (s.created > now - MONTH) { monthSent += s.amount; long long f = s.created + MONTH; if (!monthFree || f < monthFree) monthFree = f; }
+    }
+    auto left = [](long long limit, long long sent) { return limit < 0 ? -1LL : std::max(0LL, limit - sent); };
+    return head + ",\"ok\":true,\"balance\":" + std::to_string(balance) +
+        ",\"history\":" + (historyOk ? "true" : "false") +
+        ",\"perTransfer\":" + std::to_string(perTransfer) +
+        ",\"dailyLeft\":" + std::to_string(left(dailyLimit, daySent)) + ",\"dailyLimit\":" + std::to_string(dailyLimit) +
+        ",\"monthlyLeft\":" + std::to_string(left(monthlyLimit, monthSent)) + ",\"monthlyLimit\":" + std::to_string(monthlyLimit) +
+        ",\"dailyFreesAt\":" + std::to_string(dayFree) + ",\"monthlyFreesAt\":" + std::to_string(monthFree) + "}";
 }
 
 std::string RobuxSend(long long fromId, long long toId, long long amount) {

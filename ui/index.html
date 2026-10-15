@@ -450,6 +450,7 @@ body.is-selecting,body.is-selecting *{user-select:none!important}
 .rb-stat b .i{width:13px;height:13px}
 .rb-stat.bal{border-color:#1f5a3f;background:#0f1c16}
 .rb-stat.bal b{color:var(--green)}
+.rb-stat.empty b{color:#f07070}
 .rb-quick{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
 .rb-err{color:#f07070;font-size:12px;margin:10px 0 0}
 .rb-card{display:flex;align-items:center;gap:12px;padding:12px;border:1px solid var(--line2);border-radius:12px;background:var(--bg2);margin:8px 0 12px}
@@ -1342,9 +1343,16 @@ function robuxModal(fromId, preset) {
       const info = robuxInfoCache[from];
       if (!info) { infoBox.innerHTML = '<div class="rb-info-load"><span class="spin"></span>Loading balance and limits…</div>'; return; }
       if (!info.ok) { infoBox.innerHTML = `<div class="rb-info-load err">${esc(info.error || 'Could not load this account\'s limits.')}</div>`; return; }
-      const stats = [['Balance', info.balance, true]].concat(limitStats(info.limits || {}));
-      infoBox.innerHTML = stats.filter(s => typeof s[1] === 'number' && s[1] >= 0).map(([label, v, isBal]) =>
-        `<div class="rb-stat${isBal ? ' bal' : ''}"><span>${esc(label)}</span><b>${isBal ? icon('robux') : ''}${v.toLocaleString()}</b></div>`).join('');
+      const when = ms => { if (!ms) return ''; const h = Math.max(0, ms - Date.now()) / 36e5; return h < 1 ? `${Math.max(1, Math.round(h * 60))} min` : h < 48 ? `${Math.round(h)} h` : `${Math.round(h / 24)} days`; };
+      const tip = (limit, ms) => `Limit ${limit >= 0 ? limit.toLocaleString() : '?'}${ms ? ` · more frees up in ${when(ms)}` : ''}`;
+      const stats = [
+        ['Balance', info.balance, 'bal', ''],
+        ['Left · 24h', info.dailyLeft, info.dailyLeft === 0 ? 'empty' : '', tip(info.dailyLimit, info.dailyFreesAt)],
+        ['Left · 30 days', info.monthlyLeft, info.monthlyLeft === 0 ? 'empty' : '', tip(info.monthlyLimit, info.monthlyFreesAt)]
+      ];
+      infoBox.innerHTML = stats.filter(s => typeof s[1] === 'number' && s[1] >= 0).map(([label, v, cls, t]) =>
+        `<div class="rb-stat${cls ? ' ' + cls : ''}"${t ? ` title="${esc(t)}"` : ''}><span>${esc(label)}</span><b>${cls === 'bal' ? icon('robux') : ''}${v.toLocaleString()}</b></div>`).join('') +
+        (info.history === false ? '<div class="rb-info-load">Couldn\'t read recent transfers, so "left" may be too high.</div>' : '');
     };
     const loadInfo = () => {
       drawInfo();
@@ -1363,6 +1371,11 @@ function robuxModal(fromId, preset) {
       const to = toIn.value.trim().replace(/^@/, ''), amount = Number(amtIn.value || 0);
       if (!to) { showErr('Type who to send Robux to.'); toIn.focus(); return; }
       if (!(amount >= 10)) { showErr('The minimum is 10 Robux.'); amtIn.focus(); return; }
+      const info = robuxInfoCache[from];
+      if (info && info.ok) {
+        if (info.dailyLeft >= 0 && amount > info.dailyLeft) { showErr(`Only ${info.dailyLeft.toLocaleString()} Robux left to send in the last-24-hours limit.`); return; }
+        if (info.monthlyLeft >= 0 && amount > info.monthlyLeft) { showErr(`Only ${info.monthlyLeft.toLocaleString()} Robux left in the 30-day limit.`); return; }
+      }
       showErr('');
       ok.disabled = true; ok.textContent = 'Checking…';
       robuxWait = r => {
