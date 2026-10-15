@@ -409,6 +409,8 @@ body.is-selecting,body.is-selecting *{user-select:none!important}
 .rb-sub b{color:var(--soft)}
 .rb-from{width:100%;justify-content:flex-start;gap:9px}
 .rb-from .mi-av{width:22px;height:22px;border-radius:50%;flex:none}
+.rb-who{display:inline-flex;align-items:center;gap:5px;vertical-align:-5px}
+.rb-who .mi-av{width:20px;height:20px;border-radius:50%;flex:none;font-size:10px}
 .rb-quick{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
 .rb-err{color:#f07070;font-size:12px;margin:10px 0 0}
 .rb-card{display:flex;align-items:center;gap:12px;padding:12px;border:1px solid var(--line2);border-radius:12px;background:var(--bg2);margin:8px 0 12px}
@@ -1278,7 +1280,7 @@ function robuxConfirm(from, r, amount, typed) {
   const a = accById(from);
   openModal(`<h3>Send ${amount.toLocaleString()} Robux?</h3>
     <div class="rb-card">${r.to.avatar ? `<img src="${esc(r.to.avatar)}" alt="">` : '<span class="rb-noav"></span>'}<div><b>${esc(r.to.displayName || r.to.name)}</b><span>@${esc(r.to.name)} · ID ${r.to.id}</span></div></div>
-    <p class="rb-sub">From <b>${esc(a ? (a.alias || a.username) : '')}</b>${r.balance >= 0 ? `, leaving <b>${(r.balance - amount).toLocaleString()}</b> Robux` : ''}. Robux transfers can't be undone.</p>
+    <p class="rb-sub">From ${a ? `<span class="rb-who">${accAvatar(a)}<b>${esc(a.alias || a.username)}</b></span>` : ''}${r.balance >= 0 ? `, leaving <b>${(r.balance - amount).toLocaleString()}</b> Robux` : ''}. Robux transfers can't be undone.</p>
     <p class="rb-err" id="rbErr2" hidden></p>
     <div class="foot"><button class="btn ghost" data-back>Back</button><button class="btn primary" data-ok>Send ${amount.toLocaleString()} Robux</button></div>`, (m, close) => {
     const ok = m.querySelector('[data-ok]'), err = m.querySelector('#rbErr2');
