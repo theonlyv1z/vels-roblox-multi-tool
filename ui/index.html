@@ -411,6 +411,14 @@ body.is-selecting,body.is-selecting *{user-select:none!important}
 .rb-from .mi-av{width:22px;height:22px;border-radius:50%;flex:none}
 .rb-who{display:inline-flex;align-items:center;gap:5px;vertical-align:-5px}
 .rb-who .mi-av{width:20px;height:20px;border-radius:50%;flex:none;font-size:10px}
+.rb-done{display:flex;flex-direction:column;align-items:center;gap:4px;padding:14px 0 6px;text-align:center;animation:fade .2s}
+.rb-done svg{width:76px;height:76px;fill:none;stroke:var(--green);stroke-width:3;stroke-linecap:round;stroke-linejoin:round;margin-bottom:8px;animation:rbpop .45s .8s ease-out}
+.rb-done circle{stroke-dasharray:151;stroke-dashoffset:151;animation:rbdraw .55s ease-out forwards}
+.rb-done path{stroke-dasharray:34;stroke-dashoffset:34;animation:rbdraw .35s .5s ease-out forwards}
+.rb-done b{font-size:16px;font-weight:800}
+.rb-done span{color:var(--muted);font-size:12.5px}
+@keyframes rbdraw{to{stroke-dashoffset:0}}
+@keyframes rbpop{0%{transform:scale(1)}45%{transform:scale(1.1)}100%{transform:scale(1)}}
 .rb-quick{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
 .rb-err{color:#f07070;font-size:12px;margin:10px 0 0}
 .rb-card{display:flex;align-items:center;gap:12px;padding:12px;border:1px solid var(--line2);border-radius:12px;background:var(--bg2);margin:8px 0 12px}
@@ -1288,7 +1296,14 @@ function robuxConfirm(from, r, amount, typed) {
     ok.onclick = () => {
       ok.disabled = true; ok.textContent = 'Sending…'; err.hidden = true;
       robuxWait = res => {
-        if (res.ok) { close(); toast('ok', `Sent ${amount.toLocaleString()} Robux to @${r.to.name}.`); return; }
+        if (res.ok) {
+          m.innerHTML = `<div class="rb-done"><svg viewBox="0 0 52 52"><circle cx="26" cy="26" r="24"/><path d="M15 27l7.5 7.5L37.5 19"/></svg>
+            <b>Sent ${amount.toLocaleString()} Robux</b><span>to ${esc(r.to.displayName || r.to.name)} (@${esc(r.to.name)})</span></div>
+            <div class="foot"><button class="btn primary" data-done>Done</button></div>`;
+          const t = setTimeout(close, 2600);
+          m.querySelector('[data-done]').onclick = () => { clearTimeout(t); close(); };
+          return;
+        }
         ok.disabled = false; ok.textContent = `Send ${amount.toLocaleString()} Robux`;
         err.textContent = res.error; err.hidden = false;
       };

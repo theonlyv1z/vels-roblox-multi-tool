@@ -3677,7 +3677,6 @@ std::string RobuxSend(long long fromId, long long toId, long long amount) {
         json::Value u;
         if (r.ok && r.status == 200 && json::Parse(r.body, u)) toName = u["name"].str(toName);
     }
-    Log("[v] Sent " + std::to_string(amount) + " Robux from " + a.username + " to " + toName + ".");
     AddActivity("Sent " + std::to_string(amount) + " Robux", a.username + " -> " + toName);
     return std::string("{\"type\":\"robuxSent\",\"ok\":true,\"amount\":") + std::to_string(amount) + ",\"to\":" + json::Quote(toName) + "}";
 }
