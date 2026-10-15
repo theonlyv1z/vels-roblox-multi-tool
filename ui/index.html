@@ -423,6 +423,8 @@ body.is-selecting,body.is-selecting *{user-select:none!important}
 .po-pill{height:16px;padding:0 6px;border-radius:5px;background:#20222a;border:1px solid var(--line2);color:var(--muted);font-size:10px;font-weight:700;display:inline-flex;align-items:center}
 .po-pill.live{background:#0f1c16;border-color:#1f5a3f;color:var(--green)}
 .po-pill.off{background:#2a1515;border-color:#5a2a2a;color:#f07070}
+.po-copy.done{color:var(--green)}
+.po-row .po-copy .i{width:14px;height:14px}
 .po-empty{padding:10px 12px;border-radius:10px;border:1px dashed var(--line2);color:var(--muted);font-size:11.5px;text-align:center}
 .rb-sub{color:var(--muted);font-size:12px;line-height:1.5;margin:4px 0 12px}
 .rb-sub b{color:var(--soft)}
@@ -438,6 +440,16 @@ body.is-selecting,body.is-selecting *{user-select:none!important}
 .rb-done span{color:var(--muted);font-size:12.5px}
 @keyframes rbdraw{to{stroke-dashoffset:0}}
 @keyframes rbpop{0%{transform:scale(1)}45%{transform:scale(1.1)}100%{transform:scale(1)}}
+.rb-info{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;min-height:44px}
+.rb-info-load{display:flex;align-items:center;gap:8px;color:var(--muted);font-size:11.5px;padding:0 2px}
+.rb-info-load.err{color:#f07070}
+.rb-info-load .spin{width:13px;height:13px}
+.rb-stat{display:flex;flex-direction:column;justify-content:center;gap:2px;min-width:86px;padding:6px 11px;border-radius:9px;border:1px solid var(--line2);background:var(--bg2)}
+.rb-stat span{color:var(--dim);font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;white-space:nowrap}
+.rb-stat b{display:flex;align-items:center;gap:4px;font-size:13px;font-weight:800;font-variant-numeric:tabular-nums}
+.rb-stat b .i{width:13px;height:13px}
+.rb-stat.bal{border-color:#1f5a3f;background:#0f1c16}
+.rb-stat.bal b{color:var(--green)}
 .rb-quick{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
 .rb-err{color:#f07070;font-size:12px;margin:10px 0 0}
 .rb-card{display:flex;align-items:center;gap:12px;padding:12px;border:1px solid var(--line2);border-radius:12px;background:var(--bg2);margin:8px 0 12px}
@@ -1129,6 +1141,7 @@ function renderOwnedPs() {
       const meta = !s.active ? '<span class="po-pill off">Expired</span>'
         : `<span class="po-pill${s.playing ? ' live' : ''}">${s.playing}${s.max ? '/' + s.max : ''} playing</span>`;
       return `<div class="po-row${s.active ? '' : ' off'}">${av}<div class="po-t"><b title="${esc(s.name)}">${esc(s.name || 'Private server')}</b><span>${esc(a ? (a.alias || a.username) : s.owner)}${meta}</span></div>
+        <button class="btn icon sm ghost po-copy" data-po-copy="${s.id}" ${s.link ? '' : 'disabled'} title="${s.link ? 'Copy the server link' : 'No link for this server'}">${icon('clipboard')}</button>
         <button class="btn sm${s.active && s.link && !full ? ' primary' : ''}" data-po-use="${s.id}" ${s.active && s.link ? '' : 'disabled'} title="${s.link ? (full ? 'Server is full' : 'Launch into this server') : 'No join link for this server'}">Use</button></div>`;
     }).join('');
   }
@@ -1286,7 +1299,22 @@ function moveTo(id, to) {
   send('move', { id, to });
 }
 
-let robuxWait = null;
+let robuxWait = null, robuxInfoCb = null;
+const robuxInfoCache = {};
+const humanKey = k => k.replace(/([a-z0-9])([A-Z])/g, '$1 $2').replace(/^./, c => c.toUpperCase()).toLowerCase().replace(/^./, c => c.toUpperCase());
+function limitStats(limits) {
+  const known = [
+    ['perTransferLimit', 'Per transfer'],
+    ['remainingDailyLimit', 'Left today'], ['dailyRemaining', 'Left today'], ['remainingDailyTransferLimit', 'Left today'],
+    ['dailyLimit', 'Daily limit'], ['dailyTransferLimit', 'Daily limit'],
+    ['remainingMonthlyLimit', 'Left this month'], ['monthlyRemaining', 'Left this month'], ['remainingMonthlyTransferLimit', 'Left this month'],
+    ['monthlyLimit', 'Monthly limit'], ['monthlyTransferLimit', 'Monthly limit']
+  ];
+  const out = [], used = new Set();
+  for (const [k, label] of known) if (typeof limits[k] === 'number' && !out.some(o => o[0] === label)) { out.push([label, limits[k]]); used.add(k); }
+  for (const [k, v] of Object.entries(limits || {})) if (typeof v === 'number' && !used.has(k) && out.length < 5) out.push([humanKey(k), v]);
+  return out;
+}
 const plusAccounts = () => ((S && S.accounts) || []).filter(a => a.plus === 1);
 const accAvatar = a => a.avatar && !DEMO ? `<img class="mi-av" src="${HOST}avatar/${a.id}" alt="" draggable="false">` : `<span class="mi-av">${esc((a.alias || a.username).charAt(0).toUpperCase())}</span>`;
 
@@ -1299,6 +1327,7 @@ function robuxModal(fromId, preset) {
     <p class="rb-sub">From one of your Roblox Plus accounts. Minimum 10 Robux; Roblox's daily and monthly limits apply.</p>
     <div class="label">From</div>
     <button class="btn rb-from" id="rbFrom"></button>
+    <div class="rb-info" id="rbInfo"></div>
     <div class="label mt">To</div>
     <div class="field"><span data-i="user"></span><input id="rbTo" maxlength="40" spellcheck="false" placeholder="Username or user ID" value="${esc(preset.to || '')}"></div>
     <div class="label mt">Amount</div>
@@ -1308,7 +1337,23 @@ function robuxModal(fromId, preset) {
     <div class="foot"><button class="btn ghost" data-x>Cancel</button><button class="btn primary" data-ok>Review</button></div>`, (m, close) => {
     m.querySelectorAll('[data-i]').forEach(el => el.insertAdjacentHTML('afterbegin', icon(el.dataset.i)));
     const fromBtn = m.querySelector('#rbFrom'), toIn = m.querySelector('#rbTo'), amtIn = m.querySelector('#rbAmt'), err = m.querySelector('#rbErr'), ok = m.querySelector('[data-ok]');
-    const drawFrom = () => { const a = accById(from); fromBtn.innerHTML = a ? accAvatar(a) + `<span>${esc(a.alias || a.username)}</span>` : '<span>Pick an account</span>'; };
+    const infoBox = m.querySelector('#rbInfo');
+    const drawInfo = () => {
+      const info = robuxInfoCache[from];
+      if (!info) { infoBox.innerHTML = '<div class="rb-info-load"><span class="spin"></span>Loading balance and limits…</div>'; return; }
+      if (!info.ok) { infoBox.innerHTML = `<div class="rb-info-load err">${esc(info.error || 'Could not load this account\'s limits.')}</div>`; return; }
+      const stats = [['Balance', info.balance, true]].concat(limitStats(info.limits || {}));
+      infoBox.innerHTML = stats.filter(s => typeof s[1] === 'number' && s[1] >= 0).map(([label, v, isBal]) =>
+        `<div class="rb-stat${isBal ? ' bal' : ''}"><span>${esc(label)}</span><b>${isBal ? icon('robux') : ''}${v.toLocaleString()}</b></div>`).join('');
+    };
+    const loadInfo = () => {
+      drawInfo();
+      if (robuxInfoCache[from]) return;
+      const want = from;
+      robuxInfoCb = r => { if (r.from === undefined) return; robuxInfoCache[r.from] = r; if (r.from === want || r.from === from) drawInfo(); };
+      send('robuxInfo', { from: want });
+    };
+    const drawFrom = () => { const a = accById(from); fromBtn.innerHTML = a ? accAvatar(a) + `<span>${esc(a.alias || a.username)}</span>` : '<span>Pick an account</span>'; loadInfo(); };
     const showErr = t => { err.textContent = t; err.hidden = !t; };
     drawFrom();
     fromBtn.onclick = e => openMenu(e.currentTarget, plusAccounts().map(a => ({ account: a, label: a.alias || a.username, active: a.id === from, on: () => { from = a.id; drawFrom(); } })), { width: 300 });
@@ -1350,6 +1395,7 @@ function robuxConfirm(from, r, amount, typed) {
       ok.disabled = true; ok.textContent = 'Sending…'; err.hidden = true;
       robuxWait = res => {
         if (res.ok) {
+          delete robuxInfoCache[from];
           m.innerHTML = `<div class="rb-done"><svg viewBox="0 0 52 52"><circle cx="26" cy="26" r="24"/><path d="M15 27l7.5 7.5L37.5 19"/></svg>
             <b>Sent ${amount.toLocaleString()} Robux</b><span>to ${esc(r.to.displayName || r.to.name)} (@${esc(r.to.name)})</span></div>
             <div class="foot"><button class="btn primary" data-done>Done</button></div>`;
@@ -2673,6 +2719,12 @@ $('#psLink').addEventListener('keydown', e => { if (e.key === 'Enter') $('#btnPs
 $('#psStatus').addEventListener('click', e => { if (e.target.closest('[data-clear]')) send('clearPrivateServer'); });
 $('#psOwned').addEventListener('click', e => {
   if (e.target.closest('[data-po-refresh]')) { if (S && S.ownedPs) S.ownedPs.loading = true; renderOwnedPs(); send('ownedPsRefresh'); return; }
+  const c = e.target.closest('[data-po-copy]');
+  if (c && !c.disabled && S && S.ownedPs) {
+    const s = (S.ownedPs.servers || []).find(x => String(x.id) === c.dataset.poCopy);
+    if (s && s.link) { send('copyText', { text: s.link, what: 'link for ' + (s.name || 'the private server') }); c.classList.add('done'); setTimeout(() => c.classList.remove('done'), 1200); }
+    return;
+  }
   const b = e.target.closest('[data-po-use]');
   if (!b || b.disabled || !S || !S.ownedPs) return;
   const s = (S.ownedPs.servers || []).find(x => String(x.id) === b.dataset.poUse);
@@ -2821,6 +2873,7 @@ if (!DEMO) {
     if (m.type === 'state') onState(m);
     else if (m.type === 'log') m.items.forEach(it => toastFromLog(it.text));
     else if (m.type === 'robuxPrep' || m.type === 'robuxSent') { const f = robuxWait; robuxWait = null; if (f) f(m); }
+    else if (m.type === 'robuxInfo') { if (robuxInfoCb) robuxInfoCb(m); }
     else if (m.type === 'needChrome') { $('#loginWait').classList.remove('show'); chromeModal(m.what); }
     else if (m.type === 'relaunch') {
       if (m.stage === 'pending') showHandoff('Waiting for administrator approval', 'Accept the Windows prompt to continue.');

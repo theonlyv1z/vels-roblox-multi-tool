@@ -899,6 +899,14 @@ static void HandlePageMessage(const std::string& text) {
         }
     } else if (cmd == "ownedPsRefresh") {
         backend::RefreshOwnedPrivateServers();
+    } else if (cmd == "copyText") {
+        std::string text = m["text"].str(), what = m["what"].str();
+        if (text.empty()) return;
+        if (CopyToClipboard(text)) backend::Log("[v] Copied the " + (what.empty() ? std::string("text") : what) + ".");
+        else backend::Log("[!] Could not access the clipboard.");
+    } else if (cmd == "robuxInfo") {
+        long long from = m["from"].i64();
+        std::thread([from]() { QueuePageMessage(backend::RobuxInfo(from)); }).detach();
     } else if (cmd == "robuxPrep") {
         long long from = m["from"].i64();
         std::string to = m["to"].str();

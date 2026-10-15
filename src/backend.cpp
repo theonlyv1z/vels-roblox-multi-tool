@@ -3646,6 +3646,23 @@ std::string RobuxPrepare(long long fromId, const std::string& recipientRaw) {
         ",\"balance\":" + std::to_string(balance) + ",\"perTransferLimit\":" + std::to_string(perTransfer) + "}";
 }
 
+std::string RobuxInfo(long long fromId) {
+    RobloxAccount a;
+    std::string head = "{\"type\":\"robuxInfo\",\"from\":" + std::to_string(fromId);
+    if (!AccountById(fromId, a) || a.cookie.empty()) return head + ",\"ok\":false,\"error\":\"No saved login for this account.\"}";
+    long long balance = -1;
+    HttpResponse c = HttpRequest(L"economy.roblox.com", L"/v1/users/" + std::to_wstring(a.userId) + L"/currency", L"GET", a.cookie, {}, "");
+    if (c.status == 401) return head + ",\"ok\":false,\"error\":\"This account's saved login has expired.\"}";
+    json::Value cj;
+    if (c.ok && c.status == 200 && json::Parse(c.body, cj)) balance = cj["robux"].i64(-1);
+    std::string limits = "{}";
+    HttpResponse l = HttpRequest(L"apis.roblox.com", L"/transfer/v1/robux-transfer/user-transfer-limit", L"GET", a.cookie, {}, "");
+    json::Value lj;
+    if (l.ok && l.status == 200 && json::Parse(l.body, lj) && lj.type == json::Value::Object) limits = l.body;
+    else if (l.status == 403) return head + ",\"ok\":false,\"error\":\"This account can't send Robux right now.\",\"balance\":" + std::to_string(balance) + "}";
+    return head + ",\"ok\":true,\"balance\":" + std::to_string(balance) + ",\"limits\":" + limits + "}";
+}
+
 std::string RobuxSend(long long fromId, long long toId, long long amount) {
     const char* T = "robuxSent";
     RobloxAccount a;

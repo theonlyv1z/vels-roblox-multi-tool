@@ -181,6 +181,7 @@ void StartOwnedPsWatcher();
 void StartPlusChecker();
 std::string RobuxPrepare(long long fromId, const std::string& recipient);
 std::string RobuxSend(long long fromId, long long toId, long long amount);
+std::string RobuxInfo(long long fromId);
 void ForceWindowedStart();
 
 void FetchAccountStats(int index);
