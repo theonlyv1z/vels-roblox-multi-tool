@@ -1,6 +1,6 @@
 $ErrorActionPreference = 'Stop'
 
-$repo    = 'x4qo/vels-roblox-multi-tool'
+$repo    = 'theonlyv1z/vels-roblox-multi-tool'
 $branch  = 'main'
 $base    = "https://raw.githubusercontent.com/$repo/$branch"
 $dest    = Join-Path (Join-Path $HOME 'Downloads') 'VelsMultiTool'

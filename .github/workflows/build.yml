@@ -1,0 +1,65 @@
+name: Build
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - VelsMultiTool.exe
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: build-main
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          update: false
+          install: mingw-w64-ucrt-x86_64-gcc
+
+      - name: Compile
+        shell: msys2 {0}
+        run: |
+          windres src/app.rc -O coff -o src/app_icon.res
+          g++ -O2 -std=c++17 -municode -mwindows -I src -I third_party/webview2 \
+            src/main.cpp src/backend.cpp src/login.cpp src/arrange.cpp src/fonts.cpp src/extras.cpp src/discord.cpp \
+            src/app_icon.res -o VelsMultiTool.exe \
+            -lshell32 -lshlwapi -lcomdlg32 -liphlpapi -luser32 -lgdi32 -lmsimg32 -ldwmapi -luxtheme -lwinhttp -lws2_32 \
+            -lcrypt32 -lole32 -loleaut32 -luuid -lwindowscodecs -static-libgcc -static-libstdc++ -static
+
+      - name: Package
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory dist | Out-Null
+          Copy-Item VelsMultiTool.exe, handle64.exe dist/
+          Compress-Archive -Path dist/* -DestinationPath VelsMultiTool.zip
+
+      - name: Commit the new exe for the in-app updater
+        shell: pwsh
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add VelsMultiTool.exe
+          git diff --cached --quiet
+          if ($LASTEXITCODE -ne 0) {
+            git commit -m "Build VelsMultiTool.exe from ${{ github.sha }}"
+            git push
+          }
+          exit 0
+
+      - name: Publish the latest release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete latest --yes --cleanup-tag 2>$null
+          gh release create latest VelsMultiTool.zip VelsMultiTool.exe --title "Latest build" --notes "Built from ${{ github.sha }}." --latest

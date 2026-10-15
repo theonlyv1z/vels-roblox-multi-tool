@@ -1,5 +1,6 @@
 
 #include "backend.h"
+#include "resource.h"
 #include "json.h"
 
 #include <windows.h>
@@ -166,6 +167,25 @@ static std::set<std::wstring> g_modsWarned;
 
 static fs::path ModsDir() { return fs::path(g_exeDir) / L"mods"; }
 static fs::path ModNameFile(const ModDef& d) { fs::path p = ModsDir() / d.stored; p += L".name"; return p; }
+static fs::path CursorFarFile() { return ModsDir() / L"cursor_far.png"; }
+static fs::path ModSource(const ModDef& d, const wchar_t* rel) {
+    std::error_code ec;
+    if (std::string(d.id) == "cursor" && wcsstr(rel, L"ArrowFarCursor") && fs::exists(CursorFarFile(), ec)) return CursorFarFile();
+    return ModsDir() / d.stored;
+}
+
+bool WriteResourceToFile(int id, const std::wstring& path) {
+    HRSRC res = FindResourceW(nullptr, MAKEINTRESOURCEW(id), MAKEINTRESOURCEW(10));
+    if (!res) return false;
+    HGLOBAL h = LoadResource(nullptr, res);
+    DWORD size = SizeofResource(nullptr, res);
+    const void* data = h ? LockResource(h) : nullptr;
+    if (!data || !size) return false;
+    std::ofstream f(fs::path(path), std::ios::binary | std::ios::trunc);
+    if (!f) return false;
+    f.write(static_cast<const char*>(data), size);
+    return f.good();
+}
 static const ModDef* FindMod(const std::string& id) {
     for (auto& d : ModDefs()) if (id == d.id) return &d;
     return nullptr;
@@ -242,12 +262,12 @@ static int ApplyMod(const ModDef& d, bool verbose) {
     };
     for (const auto& install : RobloxInstalls()) {
         bool ok = true;
-        for (const wchar_t* rel : d.targets) ok = ApplyModFile(stored, install / rel) && ok;
+        for (const wchar_t* rel : d.targets) ok = ApplyModFile(ModSource(d, rel), install / rel) && ok;
         if (!ok) warn(install);
     }
     for (const auto& strap : StrapDirs()) {
         bool ok = true;
-        for (const wchar_t* rel : d.targets) ok = ApplyModToStrap(strap, stored, rel) && ok;
+        for (const wchar_t* rel : d.targets) ok = ApplyModToStrap(strap, ModSource(d, rel), rel) && ok;
         if (!ok) warn(strap);
     }
     return failed;
@@ -277,6 +297,7 @@ bool SetClientModFile(const std::string& id, const std::wstring& path) {
     std::lock_guard<std::mutex> lk(g_modsMutex);
     std::error_code ec;
     fs::create_directories(ModsDir(), ec);
+    fs::remove(CursorFarFile(), ec);
     fs::path stored = ModsDir() / d->stored;
     if (!fs::equivalent(path, stored, ec) && !CopyFileW(path.c_str(), stored.c_str(), FALSE)) {
         Log("[!] Could not copy that file next to the tool.");
@@ -295,6 +316,7 @@ void ClearClientMod(const std::string& id) {
     std::error_code ec;
     fs::remove(ModsDir() / d->stored, ec);
     fs::remove(ModNameFile(*d), ec);
+    if (id == "cursor") fs::remove(CursorFarFile(), ec);
     bool ok = true;
     for (const auto& install : RobloxInstalls())
         for (const wchar_t* rel : d->targets) ok = RestoreModFile(install / rel) && ok;
@@ -302,6 +324,22 @@ void ClearClientMod(const std::string& id) {
         for (const wchar_t* rel : d->targets) ok = RestoreModInStrap(strap, rel) && ok;
     if (ok) Log(std::string("[v] ") + d->label + " is back to Roblox's default. Restart Roblox to see it.");
     else Log(std::string("[!] Could not restore the default ") + d->label + " everywhere (close Roblox and try again).");
+}
+
+bool SetClientModPreset(const std::string& id, const std::string& preset) {
+    const ModDef* d = FindMod(id);
+    if (!d || id != "cursor" || preset != "2013") return false;
+    std::lock_guard<std::mutex> lk(g_modsMutex);
+    std::error_code ec;
+    fs::create_directories(ModsDir(), ec);
+    if (!WriteResourceToFile(IDR_CURSOR2013, (ModsDir() / d->stored).wstring()) ||
+        !WriteResourceToFile(IDR_CURSOR2013FAR, CursorFarFile().wstring())) {
+        Log("[!] Could not unpack the 2013 cursor.");
+        return false;
+    }
+    WriteFile(ModNameFile(*d), "2013 cursor");
+    if (ApplyMod(*d, true) == 0) Log("[v] 2013 cursor set. Restart Roblox to see it.");
+    return true;
 }
 
 static const char* kAllowedFlags[] = {

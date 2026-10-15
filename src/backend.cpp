@@ -3147,9 +3147,9 @@ std::mutex updateMutex;
 UpdateState updateState;
 static std::string g_updateSha;
 
-static const wchar_t* kUpdateRepoPath = L"/repos/x4qo/vels-roblox-multi-tool/contents?ref=main";
-static const wchar_t* kUpdateCommitsPath = L"/repos/x4qo/vels-roblox-multi-tool/commits?path=VelsMultiTool.exe&per_page=1";
-static const char* kUpdateExeUrl = "https://raw.githubusercontent.com/x4qo/vels-roblox-multi-tool/main/VelsMultiTool.exe";
+static const wchar_t* kUpdateRepoPath = L"/repos/theonlyv1z/vels-roblox-multi-tool/contents?ref=main";
+static const wchar_t* kUpdateCommitsPath = L"/repos/theonlyv1z/vels-roblox-multi-tool/commits?path=VelsMultiTool.exe&per_page=1";
+static const char* kUpdateExeUrl = "https://raw.githubusercontent.com/theonlyv1z/vels-roblox-multi-tool/main/VelsMultiTool.exe";
 
 static void SetUpdateState(const std::string& status, const std::string& message, float progress = 0.0f) {
     std::lock_guard<std::mutex> lock(updateMutex);

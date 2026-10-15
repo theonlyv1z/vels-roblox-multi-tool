@@ -45,7 +45,7 @@ Set `VELS_DEVTOOLS=1` before starting the exe to enable the WebView2 dev tools a
 Run this in PowerShell to download the prebuilt tool and launch it (no build tools needed):
 
 ```powershell
-irm https://raw.githubusercontent.com/x4qo/vels-roblox-multi-tool/main/install.ps1 | iex
+irm https://raw.githubusercontent.com/theonlyv1z/vels-roblox-multi-tool/main/install.ps1 | iex
 ```
 
 This fetches `VelsMultiTool.exe` and `handle64.exe` into `%LOCALAPPDATA%\VelsMultiTool` and starts the app. To build from source instead, see [Build](#build) below.

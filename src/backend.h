@@ -291,6 +291,9 @@ struct ClientMod { std::string id; std::string label; bool active = false; std::
 std::vector<ClientMod> ClientMods();
 bool SetClientModFile(const std::string& id, const std::wstring& path);
 void ClearClientMod(const std::string& id);
+bool SetClientModPreset(const std::string& id, const std::string& preset);
+bool WriteResourceToFile(int id, const std::wstring& path);
+bool SetBuiltinFont(const std::string& name);
 
 extern std::mutex fastFlagsMutex;
 extern std::map<std::string, std::string> fastFlags;

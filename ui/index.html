@@ -406,6 +406,7 @@ body.is-dragging,body.is-dragging *{cursor:grabbing!important}
 .ar-seg button.on{background:#1c1e24;color:var(--text)}
 body.is-selecting,body.is-selecting *{user-select:none!important}
 .row.paint{background:#1a1c22}
+.sel-box{position:absolute;z-index:5;border:1px solid #2f8cff;background:rgba(47,140,255,.16);border-radius:2px;pointer-events:none}
 .settings section{padding:15px 0;border-top:1px solid var(--line)}
 .settings section:first-child{padding-top:6px;border-top:0}
 .s-h{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:800;margin-bottom:4px}
@@ -1299,25 +1300,21 @@ listEl.addEventListener('pointerup', () => endDrag(true));
 listEl.addEventListener('pointercancel', () => endDrag(false));
 
 let selDrag = null, suppressClick = false;
-function rowAtY(y) {
-  const rows = $$('.row', listEl);
-  for (const r of rows) if (y < r.getBoundingClientRect().bottom) return r;
-  return rows[rows.length - 1] || null;
-}
-function paintSelection(y) {
-  const d = selDrag, rows = $$('.row', listEl), cur = rowAtY(y);
-  if (!d || !cur) return;
-  const a = rows.indexOf(d.anchor), b = rows.indexOf(cur);
-  if (a < 0 || b < 0) return;
-  const lo = Math.min(a, b), hi = Math.max(a, b);
+function paintSelection() {
+  const d = selDrag;
+  if (!d || !d.box) return;
+  const r = listEl.getBoundingClientRect();
+  const x1 = Math.max(0, Math.min(d.x - r.left, listEl.clientWidth)) + listEl.scrollLeft;
+  const y1 = Math.max(0, Math.min(d.y - r.top, r.height)) + listEl.scrollTop;
+  const left = Math.min(d.x0, x1), top = Math.min(d.y0, y1), w = Math.abs(x1 - d.x0), h = Math.abs(y1 - d.y0);
+  Object.assign(d.box.style, { left: left + 'px', top: top + 'px', width: w + 'px', height: h + 'px' });
   sel.clear();
   for (const id of d.base) sel.add(id);
-  rows.forEach((r, k) => {
-    const inRange = k >= lo && k <= hi;
-    r.classList.toggle('paint', inRange);
-    if (inRange) { const id = +r.dataset.id; d.add ? sel.add(id) : sel.delete(id); }
+  $$('.row', listEl).forEach(row => {
+    const hit = row.offsetTop + row.offsetHeight > top && row.offsetTop < top + h;
+    row.classList.toggle('paint', hit);
+    if (hit) { const id = +row.dataset.id; d.add ? sel.add(id) : sel.delete(id); d.last = id; }
   });
-  d.last = +cur.dataset.id;
   updateSelectionUI();
 }
 function endSelDrag() {
@@ -1325,43 +1322,58 @@ function endSelDrag() {
   if (!d) return;
   selDrag = null;
   clearInterval(d.timer);
+  if (d.box) d.box.remove();
   document.body.classList.remove('is-selecting');
   $$('.row.paint', listEl).forEach(r => r.classList.remove('paint'));
-  if (d.active) { suppressClick = true; lastClickId = d.last; setTimeout(() => { suppressClick = false; }, 0); }
+  if (d.active) { suppressClick = true; if (d.last != null) lastClickId = d.last; setTimeout(() => { suppressClick = false; }, 60); }
   if (pendingState && !dragging) { const p = pendingState; pendingState = null; onState(p); }
 }
 listEl.addEventListener('pointerdown', e => {
-  if (e.button !== 0 || dragging || e.shiftKey || e.ctrlKey || e.metaKey) return;
+  if (e.button !== 0 || dragging || e.shiftKey || e.metaKey || !S || !S.accounts.length) return;
+  if (e.target.closest('.grip, [data-act], button, input, a, .cb, [data-empty]')) return;
+  const r = listEl.getBoundingClientRect();
+  if (e.clientX - r.left >= listEl.clientWidth) return;
   const row = e.target.closest('.row');
-  if (!row || e.target.closest('.grip, [data-act], button, input, a')) return;
-  selDrag = { anchor: row, startY: e.clientY, y: e.clientY, active: false, add: !sel.has(+row.dataset.id),
-              base: new Set(sel), pointerId: e.pointerId, last: +row.dataset.id };
+  const removing = !!row && sel.has(+row.dataset.id) && !e.ctrlKey;
+  selDrag = {
+    x: e.clientX, y: e.clientY, startX: e.clientX, startY: e.clientY,
+    x0: e.clientX - r.left + listEl.scrollLeft, y0: e.clientY - r.top + listEl.scrollTop,
+    active: false, add: !removing, base: e.ctrlKey || removing ? new Set(sel) : new Set(),
+    pointerId: e.pointerId, last: row ? +row.dataset.id : null, box: null
+  };
 });
 listEl.addEventListener('pointermove', e => {
   const d = selDrag;
   if (!d || e.pointerId !== d.pointerId) return;
-  d.y = e.clientY;
+  if (!(e.buttons & 1)) { endSelDrag(); return; }
+  d.x = e.clientX; d.y = e.clientY;
   if (!d.active) {
-    if (Math.abs(e.clientY - d.startY) < 6) return;
+    if (Math.abs(e.clientY - d.startY) < 6 && Math.abs(e.clientX - d.startX) < 6) return;
     d.active = true;
     closePopover();
     try { listEl.setPointerCapture(e.pointerId); } catch (_) {}
     document.body.classList.add('is-selecting');
     if (window.getSelection) window.getSelection().removeAllRanges();
+    d.box = document.createElement('div');
+    d.box.className = 'sel-box';
+    listEl.appendChild(d.box);
     d.timer = setInterval(() => {
       if (!selDrag) return;
-      const r = listEl.getBoundingClientRect(), edge = 40;
-      if (selDrag.y < r.top + edge) listEl.scrollTop -= Math.ceil((r.top + edge - selDrag.y) / 4);
-      else if (selDrag.y > r.bottom - edge) listEl.scrollTop += Math.ceil((selDrag.y - (r.bottom - edge)) / 4);
+      const lr = listEl.getBoundingClientRect(), edge = 40;
+      if (selDrag.y < lr.top + edge) listEl.scrollTop -= Math.ceil((lr.top + edge - selDrag.y) / 4);
+      else if (selDrag.y > lr.bottom - edge) listEl.scrollTop += Math.ceil((selDrag.y - (lr.bottom - edge)) / 4);
       else return;
-      paintSelection(selDrag.y);
+      paintSelection();
     }, 16);
   }
-  paintSelection(e.clientY);
+  paintSelection();
 });
 listEl.addEventListener('pointerup', endSelDrag);
 listEl.addEventListener('pointercancel', endSelDrag);
+listEl.addEventListener('lostpointercapture', () => { if (selDrag && selDrag.active) endSelDrag(); });
 window.addEventListener('blur', endSelDrag);
+document.addEventListener('visibilitychange', () => { if (document.hidden) endSelDrag(); });
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && selDrag) endSelDrag(); });
 
 listEl.addEventListener('click', e => {
   if (suppressClick) { suppressClick = false; return; }
@@ -2171,7 +2183,7 @@ $('#btnSettings').onclick = () => {
           <div class="srow"><div class="st"><b>Confirm Kill All</b><span>Ask before closing every Roblox client</span></div><div class="sc"><button class="btn toggle bare" id="setConfirmKill"><span class="sw"></span></button></div></div>
         </div>
         <div class="spane" data-pane="roblox">
-          <div class="srow"><div class="st"><b>Font</b><span>One .ttf, .otf or .ttc for all in-game text</span></div><div class="sc"><button class="btn sm" id="fontPick" data-i="type"><span id="fontPickLbl">Choose…</span></button><button class="btn toggle bare" id="fontOn" title="Use the custom font"><span class="sw"></span></button></div></div>
+          <div class="srow"><div class="st"><b>Font</b><span>A .ttf, .otf, .ttc or a .zip with one, for all in-game text</span></div><div class="sc"><button class="btn sm" id="fontShort" title="Use the built-in ShortStack font">ShortStack</button><button class="btn sm" id="fontPick" data-i="type"><span id="fontPickLbl">Choose…</span></button><button class="btn toggle bare" id="fontOn" title="Use the custom font"><span class="sw"></span></button></div></div>
           <div id="modRows"></div>
           <div class="srow"><div class="st"><b>Fast flags</b><span>The 18 rendering flags Roblox still accepts</span></div><div class="sc"><button class="btn sm" id="flagsBtn" data-i="flag"><span id="flagsLbl">Configure</span></button></div></div>
           <div class="s-note">${icon('info')}Applied to every install, Bloxstrap and Fishstrap included. Restart Roblox to see a change.</div>
@@ -2248,7 +2260,9 @@ $('#btnSettings').onclick = () => {
       m.querySelector('#setAdminNote').hidden = !!S.elevated;
       refreshArrange(m);
       const f = S.font || {};
-      m.querySelector('#fontPickLbl').textContent = f.has ? f.name : 'Choose…';
+      const shortOn = f.has && f.enabled && f.name === 'ShortStack';
+      m.querySelector('#fontShort').classList.toggle('primary', shortOn);
+      m.querySelector('#fontPickLbl').textContent = f.has && f.name !== 'ShortStack' ? f.name : 'Choose…';
       m.querySelector('#fontPick').title = f.has ? 'Pick a different font file' : 'Pick a font file';
       m.querySelector('#fontOn').classList.toggle('on', !!f.enabled);
       m.querySelector('#fontOn').disabled = !f.has;
@@ -2257,10 +2271,17 @@ $('#btnSettings').onclick = () => {
       const modRows = m.querySelector('#modRows');
       if (modRows.dataset.key !== modsKey) {
         modRows.dataset.key = modsKey;
-        const modHints = { cursor: '.png, 64×64 works best', shiftlock: '.png, shown while shift-locked', death: '.ogg, played when you die' };
-        modRows.innerHTML = (S.mods || []).map(d => `<div class="srow"><div class="st"><b>${esc(d.label)}</b><span>${modHints[d.id] || ''}</span></div><div class="sc">
-          <button class="btn sm" data-mod="${d.id}" title="${d.active ? 'Pick a different file' : 'Pick a file'}">${icon(modIcons[d.id] || 'file')}<span>${d.active ? esc(d.file) : 'Choose…'}</span></button>
-          <button class="btn icon sm ghost" data-modclear="${d.id}" title="Back to Roblox's default" ${d.active ? '' : 'disabled'}>${icon('undo')}</button></div></div>`).join('');
+        const modHints = { cursor: 'Default, the 2013 cursor, or your own .png (64×64 works best)', shiftlock: '.png, shown while shift-locked', death: '.ogg, played when you die' };
+        modRows.innerHTML = (S.mods || []).map(d => {
+          const is2013 = d.id === 'cursor' && d.active && d.file === '2013 cursor';
+          const presets = d.id === 'cursor'
+            ? `<button class="btn sm${!d.active ? ' primary' : ''}" data-modclear="${d.id}" title="Roblox's default cursor">Default</button><button class="btn sm${is2013 ? ' primary' : ''}" data-modpreset="2013" data-presetfor="${d.id}" title="The classic 2013 Roblox cursor">2013</button>`
+            : '';
+          const custom = d.active && !is2013;
+          return `<div class="srow"><div class="st"><b>${esc(d.label)}</b><span>${modHints[d.id] || ''}</span></div><div class="sc">${presets}
+          <button class="btn sm" data-mod="${d.id}" title="${custom ? 'Pick a different file' : 'Pick a file'}">${icon(modIcons[d.id] || 'file')}<span>${custom ? esc(d.file) : 'Choose…'}</span></button>
+          ${d.id === 'cursor' ? '' : `<button class="btn icon sm ghost" data-modclear="${d.id}" title="Back to Roblox's default" ${d.active ? '' : 'disabled'}>${icon('undo')}</button>`}</div></div>`;
+        }).join('');
       }
       const nFlags = Object.keys(S.fflags || {}).length;
       m.querySelector('#flagsLbl').textContent = nFlags ? `${nFlags} set` : 'Configure';
@@ -2307,9 +2328,11 @@ $('#btnSettings').onclick = () => {
     };
     wireArrange(m);
     m.querySelector('#fontPick').onclick = () => send('fontPick');
+    m.querySelector('#fontShort').onclick = () => send('fontPreset', { name: 'shortstack' });
     m.querySelector('#modRows').onclick = e => {
-      const pick = e.target.closest('[data-mod]'), clear = e.target.closest('[data-modclear]');
-      if (pick) send('modPick', { id: pick.dataset.mod });
+      const pick = e.target.closest('[data-mod]'), clear = e.target.closest('[data-modclear]'), preset = e.target.closest('[data-modpreset]');
+      if (preset) send('modPreset', { id: preset.dataset.presetfor, preset: preset.dataset.modpreset });
+      else if (pick) send('modPick', { id: pick.dataset.mod });
       else if (clear && !clear.disabled) send('modClear', { id: clear.dataset.modclear });
     };
     m.querySelector('#flagsBtn').onclick = flagsModal;

@@ -177,7 +177,7 @@ static std::wstring OpenFontFileDialog(HWND owner) {
     OPENFILENAMEW ofn = {};
     ofn.lStructSize = sizeof(ofn);
     ofn.hwndOwner = owner;
-    ofn.lpstrFilter = L"Fonts (*.ttf, *.otf, *.ttc)\0*.ttf;*.otf;*.ttc\0All files\0*.*\0";
+    ofn.lpstrFilter = L"Fonts (*.ttf, *.otf, *.ttc, *.zip)\0*.ttf;*.otf;*.ttc;*.zip\0All files\0*.*\0";
     ofn.lpstrFile = file;
     ofn.nMaxFile = 2048;
     ofn.lpstrTitle = L"Choose a font for Roblox";
@@ -714,6 +714,12 @@ static void HandlePageMessage(const std::string& text) {
         std::string id = m["id"].str();
         std::wstring path = OpenModFileDialog(g_hwnd, id == "death");
         if (!path.empty()) std::thread([id, path]() { backend::SetClientModFile(id, path); }).detach();
+    } else if (cmd == "modPreset") {
+        std::string id = m["id"].str(), preset = m["preset"].str();
+        std::thread([id, preset]() { backend::SetClientModPreset(id, preset); }).detach();
+    } else if (cmd == "fontPreset") {
+        std::string name = m["name"].str();
+        std::thread([name]() { backend::SetBuiltinFont(name); }).detach();
     } else if (cmd == "modClear") {
         std::string id = m["id"].str();
         std::thread([id]() { backend::ClearClientMod(id); }).detach();

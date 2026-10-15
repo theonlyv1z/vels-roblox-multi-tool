@@ -1,5 +1,6 @@
 
 #include "backend.h"
+#include "resource.h"
 
 #include <windows.h>
 #include <cstdio>
@@ -9,6 +10,8 @@
 #include <set>
 #include <sstream>
 #include <thread>
+#include <algorithm>
+#include <cwctype>
 
 namespace fs = std::filesystem;
 
@@ -292,9 +295,90 @@ void LoadCustomFont() {
     if (s.enabled) std::thread([]() { ApplyAll(false); }).detach();
 }
 
+static bool IsZip(const std::wstring& path) {
+    FILE* f = _wfopen(path.c_str(), L"rb");
+    if (!f) return false;
+    unsigned char m[4] = {};
+    size_t n = fread(m, 1, 4, f);
+    fclose(f);
+    return n == 4 && memcmp(m, "PK\x03\x04", 4) == 0;
+}
+
+static bool ExtractZip(const std::wstring& zip, const fs::path& dest) {
+    wchar_t sys[MAX_PATH] = L"";
+    GetSystemDirectoryW(sys, MAX_PATH);
+    std::wstring cmd = L"\"" + std::wstring(sys) + L"\\tar.exe\" -xf \"" + zip + L"\" -C \"" + dest.wstring() + L"\"";
+    std::vector<wchar_t> buf(cmd.begin(), cmd.end());
+    buf.push_back(0);
+    STARTUPINFOW si = {};
+    si.cb = sizeof(si);
+    si.dwFlags = STARTF_USESHOWWINDOW;
+    si.wShowWindow = SW_HIDE;
+    PROCESS_INFORMATION pi = {};
+    if (!CreateProcessW(nullptr, buf.data(), nullptr, nullptr, FALSE, CREATE_NO_WINDOW, nullptr, nullptr, &si, &pi)) return false;
+    DWORD code = 1;
+    if (WaitForSingleObject(pi.hProcess, 60000) == WAIT_OBJECT_0) GetExitCodeProcess(pi.hProcess, &code);
+    else TerminateProcess(pi.hProcess, 1);
+    CloseHandle(pi.hThread);
+    CloseHandle(pi.hProcess);
+    return code == 0;
+}
+
+static int FontPreference(const fs::path& p) {
+    std::wstring n = p.stem().wstring();
+    std::transform(n.begin(), n.end(), n.begin(), ::towlower);
+    int score = 0;
+    if (n.find(L"regular") != std::wstring::npos) score += 100;
+    for (const wchar_t* style : { L"bold", L"italic", L"oblique", L"light", L"thin", L"black", L"heavy", L"medium", L"semi", L"extra", L"condensed", L"narrow" })
+        if (n.find(style) != std::wstring::npos) score -= 20;
+    std::wstring ext = p.extension().wstring();
+    std::transform(ext.begin(), ext.end(), ext.begin(), ::towlower);
+    if (ext == L".ttf") score += 5;
+    else if (ext == L".otf") score += 3;
+    return score;
+}
+
+static std::wstring FontFromZip(const std::wstring& zip, fs::path& tempDir, size_t& found) {
+    found = 0;
+    wchar_t tmp[MAX_PATH] = L"";
+    GetTempPathW(MAX_PATH, tmp);
+    tempDir = fs::path(tmp) / (L"vels_fontzip_" + std::to_wstring(GetTickCount64()));
+    std::error_code ec;
+    fs::create_directories(tempDir, ec);
+    if (ec || !ExtractZip(zip, tempDir)) return L"";
+    fs::path best;
+    int bestScore = -1000000;
+    for (auto it = fs::recursive_directory_iterator(tempDir, ec); !ec && it != fs::recursive_directory_iterator(); it.increment(ec)) {
+        std::error_code ec2;
+        if (!it->is_regular_file(ec2)) continue;
+        std::wstring ext = it->path().extension().wstring();
+        std::transform(ext.begin(), ext.end(), ext.begin(), ::towlower);
+        if (ext != L".ttf" && ext != L".otf" && ext != L".ttc") continue;
+        if (!LooksLikeFont(it->path().wstring())) continue;
+        ++found;
+        int score = FontPreference(it->path());
+        if (best.empty() || score > bestScore) { best = it->path(); bestScore = score; }
+    }
+    return best.wstring();
+}
+
 bool SetCustomFontFile(const std::wstring& path) {
+    if (IsZip(path)) {
+        fs::path tempDir;
+        size_t found = 0;
+        std::wstring font = FontFromZip(path, tempDir, found);
+        bool ok = false;
+        if (font.empty()) Log(found ? "[!] Couldn't read the fonts in that zip." : "[!] That zip has no .ttf, .otf or .ttc font in it.");
+        else {
+            if (found > 1) Log("[i] The zip has " + std::to_string(found) + " fonts - using " + Utf8(fs::path(font).filename().wstring()) + ".");
+            ok = SetCustomFontFile(font);
+        }
+        std::error_code ec;
+        fs::remove_all(tempDir, ec);
+        return ok;
+    }
     if (!LooksLikeFont(path)) {
-        Log("[!] That file is not a TrueType or OpenType font (.ttf, .otf, .ttc).");
+        Log("[!] That file is not a TrueType or OpenType font (.ttf, .otf, .ttc) or a zip with one inside.");
         return false;
     }
     {
@@ -316,6 +400,20 @@ bool SetCustomFontFile(const std::wstring& path) {
     ApplyAll(true);
     AddActivity("Roblox font changed", Utf8(fs::path(path).stem().wstring()));
     return true;
+}
+
+bool SetBuiltinFont(const std::string& name) {
+    if (name != "shortstack") return false;
+    wchar_t tmp[MAX_PATH] = L"";
+    GetTempPathW(MAX_PATH, tmp);
+    fs::path dir = fs::path(tmp) / (L"vels_font_" + std::to_wstring(GetTickCount64()));
+    std::error_code ec;
+    fs::create_directories(dir, ec);
+    fs::path file = dir / L"ShortStack.ttf";
+    bool ok = WriteResourceToFile(IDR_SHORTSTACK, file.wstring()) && SetCustomFontFile(file.wstring());
+    if (!fs::exists(file, ec)) Log("[!] Could not unpack the ShortStack font.");
+    fs::remove_all(dir, ec);
+    return ok;
 }
 
 void SetCustomFontEnabled(bool on) {
