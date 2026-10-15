@@ -405,6 +405,17 @@ body.is-dragging,body.is-dragging *{cursor:grabbing!important}
 .ar-seg button+button{border-left:1px solid var(--line2)}
 .ar-seg button.on{background:#1c1e24;color:var(--text)}
 body.is-selecting,body.is-selecting *{user-select:none!important}
+.rb-sub{color:var(--muted);font-size:12px;line-height:1.5;margin:4px 0 12px}
+.rb-sub b{color:var(--soft)}
+.rb-from{width:100%;justify-content:flex-start;gap:9px}
+.rb-from .mi-av{width:22px;height:22px;border-radius:50%;flex:none}
+.rb-quick{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
+.rb-err{color:#f07070;font-size:12px;margin:10px 0 0}
+.rb-card{display:flex;align-items:center;gap:12px;padding:12px;border:1px solid var(--line2);border-radius:12px;background:var(--bg2);margin:8px 0 12px}
+.rb-card img,.rb-noav{width:54px;height:54px;border-radius:50%;background:#22252b;flex:none}
+.rb-card b{display:block;font-size:14px}
+.rb-card span{color:var(--muted);font-size:12px}
+#btnRobux[hidden]{display:none}
 .row.paint{background:#1a1c22}
 .sel-box{position:absolute;z-index:5;border:1px solid #2f8cff;background:rgba(47,140,255,.16);border-radius:2px;pointer-events:none}
 .settings section{padding:15px 0;border-top:1px solid var(--line)}
@@ -991,6 +1002,7 @@ function renderTop() {
     `<span class="chip">${icon('users')}<b>${S.accounts.length}</b> accounts</span>` +
     `<span class="chip ${S.alive ? 'live' : ''}">${icon('activity')}<b>${S.alive}</b> running</span>` +
     `<span class="chip hide-md">${icon('cpu')}<b>${S.cpu}%</b> CPU</span>`);
+  $('#btnRobux').hidden = !plusAccounts().length;
   const m = $('#btnMulti');
   m.classList.toggle('on', !!S.multi);
   m.title = S.multi ? 'Multi Instance is on. Click to turn it off.' : 'Allow several Roblox clients at once (needs admin)';
@@ -1211,32 +1223,75 @@ function moveTo(id, to) {
   send('move', { id, to });
 }
 
-function robuxModal(fromId) {
-  if (!S || !S.accounts.length) return;
-  let from = fromId != null ? fromId : (orderedSelection()[0] != null ? orderedSelection()[0] : S.accounts[0].id);
+let robuxWait = null;
+const plusAccounts = () => ((S && S.accounts) || []).filter(a => a.plus === 1);
+const accAvatar = a => a.avatar && !DEMO ? `<img class="mi-av" src="${HOST}avatar/${a.id}" alt="" draggable="false">` : `<span class="mi-av">${esc((a.alias || a.username).charAt(0).toUpperCase())}</span>`;
+
+function robuxModal(fromId, preset) {
+  const plus = plusAccounts();
+  if (!plus.length) { toast('info', 'None of your accounts have Roblox Plus, which Roblox needs to send Robux.'); return; }
+  preset = preset || {};
+  let from = plus.some(a => a.id === fromId) ? fromId : (plus.find(a => sel.has(a.id)) || plus[0]).id;
   openModal(`<h3>Send Robux</h3>
-    <p>Needs <b>Roblox Plus</b> on the sending account. This opens the person's Roblox profile signed in as that account, then you pick the amount under <b>⋯ → Send Robux</b> on Roblox's own screen.</p>
+    <p class="rb-sub">From one of your Roblox Plus accounts. Minimum 10 Robux; Roblox's daily and monthly limits apply.</p>
     <div class="label">From</div>
-    <button class="btn" id="rbFrom" style="width:100%;justify-content:flex-start"></button>
+    <button class="btn rb-from" id="rbFrom"></button>
     <div class="label mt">To</div>
-    <div class="field"><span data-i="user"></span><input id="rbTo" maxlength="40" spellcheck="false" placeholder="Username or user ID"></div>
-    <div class="foot"><button class="btn ghost" data-x>Cancel</button><button class="btn primary" data-ok>Open Send Robux</button></div>`, (m, close) => {
+    <div class="field"><span data-i="user"></span><input id="rbTo" maxlength="40" spellcheck="false" placeholder="Username or user ID" value="${esc(preset.to || '')}"></div>
+    <div class="label mt">Amount</div>
+    <div class="field"><span data-i="robux"></span><input id="rbAmt" inputmode="numeric" maxlength="6" spellcheck="false" placeholder="10 or more" value="${preset.amount || ''}"></div>
+    <div class="rb-quick">${[10, 50, 100, 500, 1000].map(v => `<button class="btn sm" data-amt="${v}">${v}</button>`).join('')}</div>
+    <p class="rb-err" id="rbErr" hidden></p>
+    <div class="foot"><button class="btn ghost" data-x>Cancel</button><button class="btn primary" data-ok>Review</button></div>`, (m, close) => {
     m.querySelectorAll('[data-i]').forEach(el => el.insertAdjacentHTML('afterbegin', icon(el.dataset.i)));
-    const fromBtn = m.querySelector('#rbFrom');
-    const drawFrom = () => { const a = accById(from); fromBtn.innerHTML = icon('user') + `<span>${esc(a ? (a.alias || a.username) : 'Pick an account')}</span>`; };
+    const fromBtn = m.querySelector('#rbFrom'), toIn = m.querySelector('#rbTo'), amtIn = m.querySelector('#rbAmt'), err = m.querySelector('#rbErr'), ok = m.querySelector('[data-ok]');
+    const drawFrom = () => { const a = accById(from); fromBtn.innerHTML = a ? accAvatar(a) + `<span>${esc(a.alias || a.username)}</span>` : '<span>Pick an account</span>'; };
+    const showErr = t => { err.textContent = t; err.hidden = !t; };
     drawFrom();
-    fromBtn.onclick = e => openMenu(e.currentTarget, S.accounts.map(a => ({ icon: 'user', label: a.alias || a.username, active: a.id === from, on: () => { from = a.id; drawFrom(); } })), { width: 300 });
-    const input = m.querySelector('#rbTo');
+    fromBtn.onclick = e => openMenu(e.currentTarget, plusAccounts().map(a => ({ account: a, label: a.alias || a.username, active: a.id === from, on: () => { from = a.id; drawFrom(); } })), { width: 300 });
+    m.querySelector('.rb-quick').onclick = e => { const q = e.target.closest('[data-amt]'); if (q) { amtIn.value = q.dataset.amt; showErr(''); } };
+    amtIn.addEventListener('input', () => { const v = amtIn.value.replace(/\D/g, ''); if (v !== amtIn.value) amtIn.value = v; });
     const go = () => {
-      const to = input.value.trim().replace(/^@/, '');
-      if (!to) { input.focus(); return; }
-      close();
-      send('sendRobux', { from, to });
+      const to = toIn.value.trim().replace(/^@/, ''), amount = Number(amtIn.value || 0);
+      if (!to) { showErr('Type who to send Robux to.'); toIn.focus(); return; }
+      if (!(amount >= 10)) { showErr('The minimum is 10 Robux.'); amtIn.focus(); return; }
+      showErr('');
+      ok.disabled = true; ok.textContent = 'Checking…';
+      robuxWait = r => {
+        ok.disabled = false; ok.textContent = 'Review';
+        if (!r.ok) { showErr(r.error); return; }
+        if (r.perTransferLimit > 0 && amount > r.perTransferLimit) { showErr(`The most this account can send at once is ${r.perTransferLimit.toLocaleString()} Robux.`); return; }
+        if (r.balance >= 0 && r.balance < amount) { showErr(`Not enough Robux - this account has ${r.balance.toLocaleString()}.`); return; }
+        close();
+        robuxConfirm(from, r, amount, to);
+      };
+      send('robuxPrep', { from, to });
     };
-    m.querySelector('[data-ok]').onclick = go;
-    input.addEventListener('keydown', e => { if (e.key === 'Enter') go(); });
-    m.querySelector('[data-x]').onclick = close;
-    setTimeout(() => input.focus(), 0);
+    ok.onclick = go;
+    [toIn, amtIn].forEach(el => el.addEventListener('keydown', e => { if (e.key === 'Enter') go(); }));
+    m.querySelector('[data-x]').onclick = () => { robuxWait = null; close(); };
+    setTimeout(() => (preset.to ? amtIn : toIn).focus(), 0);
+  });
+}
+
+function robuxConfirm(from, r, amount, typed) {
+  const a = accById(from);
+  openModal(`<h3>Send ${amount.toLocaleString()} Robux?</h3>
+    <div class="rb-card">${r.to.avatar ? `<img src="${esc(r.to.avatar)}" alt="">` : '<span class="rb-noav"></span>'}<div><b>${esc(r.to.displayName || r.to.name)}</b><span>@${esc(r.to.name)} · ID ${r.to.id}</span></div></div>
+    <p class="rb-sub">From <b>${esc(a ? (a.alias || a.username) : '')}</b>${r.balance >= 0 ? `, leaving <b>${(r.balance - amount).toLocaleString()}</b> Robux` : ''}. Robux transfers can't be undone.</p>
+    <p class="rb-err" id="rbErr2" hidden></p>
+    <div class="foot"><button class="btn ghost" data-back>Back</button><button class="btn primary" data-ok>Send ${amount.toLocaleString()} Robux</button></div>`, (m, close) => {
+    const ok = m.querySelector('[data-ok]'), err = m.querySelector('#rbErr2');
+    m.querySelector('[data-back]').onclick = () => { robuxWait = null; close(); robuxModal(from, { to: typed, amount }); };
+    ok.onclick = () => {
+      ok.disabled = true; ok.textContent = 'Sending…'; err.hidden = true;
+      robuxWait = res => {
+        if (res.ok) { close(); toast('ok', `Sent ${amount.toLocaleString()} Robux to @${r.to.name}.`); return; }
+        ok.disabled = false; ok.textContent = `Send ${amount.toLocaleString()} Robux`;
+        err.textContent = res.error; err.hidden = false;
+      };
+      send('robuxSend', { from, to: r.to.id, amount });
+    };
   });
 }
 
@@ -1251,7 +1306,7 @@ function openRowMenu(anchor, id) {
   openMenu(anchor, [
     { icon: 'play', label: 'Launch' + many, on: () => send('launch', { ids }) },
     { icon: 'globe', label: 'Open in browser' + many, on: () => send('browser', { ids }) },
-    { icon: 'robux', label: 'Send Robux', disabled: bulk, on: () => robuxModal(id) },
+    ...(a.plus === 1 && !bulk ? [{ icon: 'robux', label: 'Send Robux', on: () => robuxModal(id) }] : []),
     { icon: 'star', label: (allPri ? 'Remove priority' : 'Prioritise') + many, on: () => send('priority', { ids, value: !allPri }) },
     { icon: 'top', label: 'Move to top', on: () => moveTo(id, a.priority ? 0 : priCount) },
     { icon: 'bottom', label: 'Move to bottom', on: () => moveTo(id, a.priority ? priCount - 1 : S.accounts.length - 1) },
@@ -2687,6 +2742,7 @@ if (!DEMO) {
     if (!m) return;
     if (m.type === 'state') onState(m);
     else if (m.type === 'log') m.items.forEach(it => toastFromLog(it.text));
+    else if (m.type === 'robuxPrep' || m.type === 'robuxSent') { const f = robuxWait; robuxWait = null; if (f) f(m); }
     else if (m.type === 'needChrome') { $('#loginWait').classList.remove('show'); chromeModal(m.what); }
     else if (m.type === 'relaunch') {
       if (m.stage === 'pending') showHandoff('Waiting for administrator approval', 'Accept the Windows prompt to continue.');

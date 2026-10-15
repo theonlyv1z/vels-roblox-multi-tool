@@ -170,7 +170,10 @@ void LaunchAccountClient(int index);
 void LaunchAccountIntoPrivateServer(int index, long long placeId, const std::string& linkCode);
 
 void OpenAccountWeb(int index);
-void OpenSendRobux(long long senderId, const std::string& recipient);
+int PlusOf(long long userId);
+void StartPlusChecker();
+std::string RobuxPrepare(long long fromId, const std::string& recipient);
+std::string RobuxSend(long long fromId, long long toId, long long amount);
 void ForceWindowedStart();
 
 void FetchAccountStats(int index);

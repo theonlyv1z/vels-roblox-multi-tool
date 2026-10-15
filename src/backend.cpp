@@ -240,6 +240,7 @@ void Init(const std::wstring& exeDir) {
     std::thread(StartupUpdateCheck).detach();
     ScrubAndLockRobloxCookieFile("startup");
     HoldMultiRobloxMutex();
+    StartPlusChecker();
 }
 
 void Shutdown() {
@@ -2006,49 +2007,6 @@ void LaunchAccountIntoPrivateServer(int index, long long placeId, const std::str
     LaunchAccountInternal(index, placeId, linkCode);
 }
 
-void OpenSendRobux(long long senderId, const std::string& recipientRaw) {
-    RobloxAccount account;
-    bool found = false;
-    {
-        std::lock_guard<std::mutex> lock(accountsMutex);
-        for (const auto& a : accounts) if (a.userId == senderId) { account = a; found = true; break; }
-    }
-    if (!found) { Log("[!] Pick the account to send Robux from."); return; }
-    if (account.cookie.empty()) { Log("[!] " + account.username + " has no saved cookie - re-add it first."); return; }
-
-    std::string name = recipientRaw;
-    while (!name.empty() && (name.front() == ' ' || name.front() == '@')) name.erase(name.begin());
-    while (!name.empty() && name.back() == ' ') name.pop_back();
-    if (name.empty()) { Log("[!] Type who to send Robux to."); return; }
-
-    long long targetId = 0;
-    std::string targetName = name;
-    bool numeric = std::all_of(name.begin(), name.end(), [](char c) { return c >= '0' && c <= '9'; });
-    if (numeric && name.size() < 19) {
-        targetId = std::stoll(name);
-    } else {
-        HttpResponse r = HttpRequest(L"users.roblox.com", L"/v1/usernames/users", L"POST", "",
-            { { L"Content-Type", L"application/json" } },
-            "{\"usernames\":[" + json::Quote(name) + "],\"excludeBannedUsers\":true}");
-        json::Value root;
-        if (r.ok && r.status == 200 && json::Parse(r.body, root) && !root["data"].a.empty()) {
-            targetId = root["data"].a[0]["id"].i64();
-            std::string n = root["data"].a[0]["name"].str();
-            if (!n.empty()) targetName = n;
-        } else if (!r.ok || r.status != 200) {
-            Log("[!] Could not look up that username (HTTP " + std::to_string(r.status) + ").");
-            return;
-        }
-    }
-    if (targetId <= 0) { Log("[!] There's no Roblox user called " + name + "."); return; }
-    if (targetId == account.userId) { Log("[!] That's the same account - pick someone else to send to."); return; }
-
-    login::OpenAccountWebSession(g_exeDir, account.cookie, account.userId, account.username,
-        "https://www.roblox.com/users/" + std::to_string(targetId) + "/profile");
-    Log("[v] Opened " + targetName + "'s profile as " + account.username + ". Click the ... menu, then Send Robux, to pick the amount.");
-    AddActivity("Send Robux", account.username + " -> " + targetName);
-}
-
 void OpenAccountWeb(int index) {
     RobloxAccount account;
     {
@@ -3555,6 +3513,173 @@ void LoadFriends(long long userId) {
         });
     }
     finish("", std::move(rows), (int)ids.size(), online);
+}
+
+std::mutex plusMutex;
+std::map<long long, int> plusStatus;
+
+int PlusOf(long long userId) {
+    std::lock_guard<std::mutex> lk(plusMutex);
+    auto it = plusStatus.find(userId);
+    return it == plusStatus.end() ? -1 : it->second;
+}
+
+static bool AccountById(long long id, RobloxAccount& out) {
+    std::lock_guard<std::mutex> lock(accountsMutex);
+    for (const auto& a : accounts) if (a.userId == id) { out = a; return true; }
+    return false;
+}
+
+static int CheckRobloxPlus(const RobloxAccount& a) {
+    std::string body = "{\"profileId\":\"" + std::to_string(a.userId) +
+        "\",\"profileType\":\"User\",\"components\":[{\"component\":\"UserProfileHeader\"}],\"includeComponentOrdering\":true}";
+    HttpResponse r = PostJsonAs(L"apis.roblox.com", L"/profile-platform-api/v1/profiles/get", a.cookie, body);
+    json::Value root;
+    if (!r.ok || r.status != 200 || !json::Parse(r.body, root)) return -1;
+    const json::Value& flag = root["components"]["UserProfileHeader"]["isRobloxPlus"];
+    return flag.type == json::Value::Bool && flag.b ? 1 : 0;
+}
+
+void StartPlusChecker() {
+    std::thread([]() {
+        auto lastFull = std::chrono::steady_clock::now();
+        for (;;) {
+            bool full = std::chrono::steady_clock::now() - lastFull > std::chrono::minutes(15);
+            if (full) lastFull = std::chrono::steady_clock::now();
+            std::vector<RobloxAccount> list;
+            {
+                std::lock_guard<std::mutex> lock(accountsMutex);
+                list = accounts;
+            }
+            for (const auto& a : list) {
+                if (a.cookie.empty() || a.userId <= 0) continue;
+                if (!full && PlusOf(a.userId) >= 0) continue;
+                int s = CheckRobloxPlus(a);
+                if (s >= 0 || PlusOf(a.userId) < 0) {
+                    std::lock_guard<std::mutex> lk(plusMutex);
+                    plusStatus[a.userId] = s;
+                }
+                std::this_thread::sleep_for(std::chrono::milliseconds(400));
+            }
+            std::this_thread::sleep_for(std::chrono::seconds(20));
+        }
+    }).detach();
+}
+
+static std::string RobuxFail(const char* type, const std::string& msg) {
+    return std::string("{\"type\":\"") + type + "\",\"ok\":false,\"error\":" + json::Quote(msg) + "}";
+}
+
+static std::string RobloxErrorText(const std::string& body, int status) {
+    json::Value root;
+    if (json::Parse(body, root)) {
+        std::string reason = root["failureReason"].str(), message = root["errorMessage"].str();
+        if (message.empty() && !root["errors"].a.empty()) message = root["errors"].a[0]["message"].str();
+        if (!message.empty()) return reason.empty() ? message : reason + ": " + message;
+        if (!reason.empty()) return reason;
+    }
+    return "Roblox said no (HTTP " + std::to_string(status) + ").";
+}
+
+std::string RobuxPrepare(long long fromId, const std::string& recipientRaw) {
+    const char* T = "robuxPrep";
+    RobloxAccount a;
+    if (!AccountById(fromId, a)) return RobuxFail(T, "Pick the account to send from.");
+    if (a.cookie.empty()) return RobuxFail(T, a.username + " has no saved login - re-add it first.");
+
+    std::string name = recipientRaw;
+    while (!name.empty() && (name.front() == ' ' || name.front() == '@')) name.erase(name.begin());
+    while (!name.empty() && name.back() == ' ') name.pop_back();
+    if (name.empty()) return RobuxFail(T, "Type who to send Robux to.");
+
+    long long targetId = 0;
+    bool numeric = std::all_of(name.begin(), name.end(), [](char c) { return c >= '0' && c <= '9'; });
+    if (numeric && name.size() < 19) targetId = std::stoll(name);
+    else {
+        HttpResponse r = HttpRequest(L"users.roblox.com", L"/v1/usernames/users", L"POST", "",
+            { { L"Content-Type", L"application/json" } },
+            "{\"usernames\":[" + json::Quote(name) + "],\"excludeBannedUsers\":true}");
+        json::Value root;
+        if (!r.ok || r.status != 200 || !json::Parse(r.body, root)) return RobuxFail(T, "Couldn't look up that username (HTTP " + std::to_string(r.status) + ").");
+        if (!root["data"].a.empty()) targetId = root["data"].a[0]["id"].i64();
+    }
+    if (targetId <= 0) return RobuxFail(T, "There's no Roblox user called " + name + ".");
+    if (targetId == a.userId) return RobuxFail(T, "That's the same account - pick someone else.");
+
+    std::string toName = name, toDisplay;
+    {
+        HttpResponse r = HttpRequest(L"users.roblox.com", L"/v1/users/" + std::to_wstring(targetId), L"GET", "", {}, "");
+        json::Value u;
+        if (r.ok && r.status == 200 && json::Parse(r.body, u)) { toName = u["name"].str(toName); toDisplay = u["displayName"].str(); }
+        else if (r.status == 404) return RobuxFail(T, "There's no Roblox user with ID " + std::to_string(targetId) + ".");
+    }
+    std::string avatar;
+    {
+        HttpResponse r = HttpRequest(L"thumbnails.roblox.com",
+            L"/v1/users/avatar-headshot?userIds=" + std::to_wstring(targetId) + L"&size=150x150&format=Png&isCircular=false", L"GET", "", {}, "");
+        json::Value t;
+        if (r.ok && r.status == 200 && json::Parse(r.body, t) && !t["data"].a.empty()) avatar = t["data"].a[0]["imageUrl"].str();
+    }
+
+    long long balance = -1;
+    {
+        HttpResponse r = HttpRequest(L"economy.roblox.com", L"/v1/users/" + std::to_wstring(a.userId) + L"/currency", L"GET", a.cookie, {}, "");
+        if (r.status == 401) return RobuxFail(T, a.username + "'s saved login has expired - re-add the account.");
+        json::Value c;
+        if (r.ok && r.status == 200 && json::Parse(r.body, c)) balance = c["robux"].i64(-1);
+    }
+
+    long long perTransfer = 0;
+    {
+        HttpResponse r = HttpRequest(L"apis.roblox.com", L"/transfer/v1/robux-transfer/user-transfer-limit", L"GET", a.cookie, {}, "");
+        if (r.status == 401) return RobuxFail(T, a.username + "'s saved login has expired - re-add the account.");
+        if (r.status == 403) return RobuxFail(T, a.username + " can't send Robux - it needs Roblox Plus.");
+        json::Value l;
+        if (r.ok && r.status == 200 && json::Parse(r.body, l)) perTransfer = l["perTransferLimit"].i64(0);
+        else return RobuxFail(T, "Couldn't read " + a.username + "'s transfer limits: " + RobloxErrorText(r.body, r.status));
+    }
+
+    return std::string("{\"type\":\"robuxPrep\",\"ok\":true,\"from\":") + std::to_string(a.userId) +
+        ",\"to\":{\"id\":" + std::to_string(targetId) + ",\"name\":" + json::Quote(toName) +
+        ",\"displayName\":" + json::Quote(toDisplay) + ",\"avatar\":" + json::Quote(avatar) + "}" +
+        ",\"balance\":" + std::to_string(balance) + ",\"perTransferLimit\":" + std::to_string(perTransfer) + "}";
+}
+
+std::string RobuxSend(long long fromId, long long toId, long long amount) {
+    const char* T = "robuxSent";
+    RobloxAccount a;
+    if (!AccountById(fromId, a)) return RobuxFail(T, "Pick the account to send from.");
+    if (toId <= 0 || toId == a.userId) return RobuxFail(T, "Pick someone else to send to.");
+    if (amount < 10) return RobuxFail(T, "The minimum is 10 Robux.");
+
+    HttpResponse init = PostJsonAs(L"apis.roblox.com", L"/transfer/v1/robux-transfer/initiate-transfer", a.cookie,
+        "{\"transferOrigin\":1,\"recipientId\":" + std::to_string(toId) + "}");
+    json::Value ij;
+    if (!init.ok || init.status != 200 || !json::Parse(init.body, ij)) return RobuxFail(T, RobloxErrorText(init.body, init.status));
+    const json::Value& idv = ij["transferRequestId"];
+    std::string requestId = idv.type == json::Value::Number ? std::to_string((long long)idv.n) : idv.str();
+    if (requestId.empty()) return RobuxFail(T, "Roblox didn't start the transfer.");
+
+    HttpResponse proc = PostJsonAs(L"apis.roblox.com", L"/transfer/v1/robux-transfer/process-transfer/" + Widen(requestId), a.cookie,
+        "{\"robuxAmount\":" + std::to_string(amount) + "}");
+    json::Value pj;
+    bool parsed = json::Parse(proc.body, pj);
+    if (parsed) {
+        for (const auto& act : pj["ampRecourseActions"].a)
+            if (act.str() == "ParentConsentRecourse")
+                return RobuxFail(T, "Roblox needs a parent to approve this transfer - finish it in the Roblox app.");
+    }
+    if (!proc.ok || proc.status != 200) return RobuxFail(T, RobloxErrorText(proc.body, proc.status));
+
+    std::string toName = std::to_string(toId);
+    {
+        HttpResponse r = HttpRequest(L"users.roblox.com", L"/v1/users/" + std::to_wstring(toId), L"GET", "", {}, "");
+        json::Value u;
+        if (r.ok && r.status == 200 && json::Parse(r.body, u)) toName = u["name"].str(toName);
+    }
+    Log("[v] Sent " + std::to_string(amount) + " Robux from " + a.username + " to " + toName + ".");
+    AddActivity("Sent " + std::to_string(amount) + " Robux", a.username + " -> " + toName);
+    return std::string("{\"type\":\"robuxSent\",\"ok\":true,\"amount\":") + std::to_string(amount) + ",\"to\":" + json::Quote(toName) + "}";
 }
 
 }

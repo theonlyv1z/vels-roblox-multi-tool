@@ -317,6 +317,7 @@ static std::string BuildStateJson() {
             o += ",\"pid\":" + N(pit == pidMap.end() ? 0 : (long long)pit->second);
             o += std::string(",\"priority\":") + B(a.priority);
             o += std::string(",\"avatar\":") + B(a.avatarLoaded && !a.avatarPng.empty());
+            o += ",\"plus\":" + N(backend::PlusOf(a.userId));
             o += std::string(",\"hasPassword\":") + B(!a.password.empty());
             auto fit = fpsMap.find(a.userId);
             o += ",\"fps\":" + N(fit == fpsMap.end() ? 0 : fit->second);
@@ -551,6 +552,23 @@ static void PostToPage(const std::string& jsonText) {
     if (g_webview && g_pageReady) g_webview->PostWebMessageAsJson(Widen(jsonText).c_str());
 }
 
+static std::mutex g_pageQueueMutex;
+static std::vector<std::string> g_pageQueue;
+
+static void QueuePageMessage(const std::string& jsonText) {
+    std::lock_guard<std::mutex> lock(g_pageQueueMutex);
+    g_pageQueue.push_back(jsonText);
+}
+
+static void FlushPageQueue() {
+    std::vector<std::string> pending;
+    {
+        std::lock_guard<std::mutex> lock(g_pageQueueMutex);
+        pending.swap(g_pageQueue);
+    }
+    for (const auto& msg : pending) PostToPage(msg);
+}
+
 static void FlushLogs() {
     std::vector<LogEntry> fresh;
     {
@@ -574,6 +592,7 @@ static void FlushLogs() {
 static void Tick() {
     if (!g_pageReady || !g_webview || g_retiring) return;
     FlushLogs();
+    FlushPageQueue();
     std::string state = BuildStateJson();
     if (state != g_lastState) {
         g_lastState = std::move(state);
@@ -864,11 +883,13 @@ static void HandlePageMessage(const std::string& text) {
                 }
             }).detach();
         }
-    } else if (cmd == "sendRobux") {
+    } else if (cmd == "robuxPrep") {
         long long from = m["from"].i64();
         std::string to = m["to"].str();
-        if (!login::ChromeInstalled()) PostToPage("{\"type\":\"needChrome\",\"what\":\"web\"}");
-        else std::thread([from, to]() { backend::OpenSendRobux(from, to); }).detach();
+        std::thread([from, to]() { QueuePageMessage(backend::RobuxPrepare(from, to)); }).detach();
+    } else if (cmd == "robuxSend") {
+        long long from = m["from"].i64(), to = m["to"].i64(), amount = m["amount"].i64();
+        std::thread([from, to, amount]() { QueuePageMessage(backend::RobuxSend(from, to, amount)); }).detach();
     } else if (cmd == "browser") {
         std::vector<long long> ids = OrderedIds(m["ids"]);
         if (!login::ChromeInstalled()) PostToPage("{\"type\":\"needChrome\",\"what\":\"web\"}");
