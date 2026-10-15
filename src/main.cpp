@@ -382,6 +382,20 @@ static std::string BuildStateJson() {
     if (!active.linkCode.empty())
         for (auto& p : savedPs) if (p.linkCode == active.linkCode) { activeName = p.name; break; }
 
+    {
+        std::lock_guard<std::mutex> lk(backend::ownedPsMutex);
+        const auto& op = backend::ownedPs;
+        o += ",\"ownedPs\":{\"placeId\":" + N(op.placeId) + std::string(",\"loading\":") + B(op.loading) +
+             std::string(",\"scanned\":") + B(op.scanned) + ",\"servers\":[";
+        for (size_t i = 0; i < op.servers.size(); ++i) {
+            const auto& s = op.servers[i];
+            o += std::string(i ? "," : "") + "{\"id\":" + N(s.vipServerId) + ",\"name\":" + Quote(s.name) +
+                 ",\"ownerId\":" + N(s.ownerId) + ",\"owner\":" + Quote(s.ownerName) +
+                 ",\"playing\":" + N(s.playing) + ",\"max\":" + N(s.maxPlayers) +
+                 ",\"link\":" + Quote(s.link) + std::string(",\"active\":") + B(s.active) + "}";
+        }
+        o += "]}";
+    }
     o += ",\"ps\":{\"code\":" + Quote(active.linkCode);
     o += ",\"placeId\":" + N(active.placeId);
     o += ",\"name\":" + Quote(activeName);
@@ -883,6 +897,8 @@ static void HandlePageMessage(const std::string& text) {
                 }
             }).detach();
         }
+    } else if (cmd == "ownedPsRefresh") {
+        backend::RefreshOwnedPrivateServers();
     } else if (cmd == "robuxPrep") {
         long long from = m["from"].i64();
         std::string to = m["to"].str();

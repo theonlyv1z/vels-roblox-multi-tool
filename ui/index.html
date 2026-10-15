@@ -43,7 +43,8 @@ b,strong{font-weight:700}
 .brand-mark img{width:100%;height:100%;display:block}
 .brand h1{margin:0;font-size:15px;font-weight:800;letter-spacing:-.015em;line-height:1.2}
 .brand .tagline{font-size:11.5px;color:var(--muted);font-weight:500}
-.stats{display:flex;gap:6px;margin-left:10px;min-width:0}
+.stats{display:flex;gap:6px;margin-left:10px;min-width:0;overflow:hidden;flex:0 1 auto}
+.stats .chip{flex:none}
 .chip{display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 10px;border-radius:8px;background:var(--panel);border:1px solid var(--line);color:var(--muted);font-size:12px;font-weight:500;white-space:nowrap}
 .chip b{color:var(--text);font-weight:700;font-variant-numeric:tabular-nums}
 .chip .i{width:14px;height:14px}
@@ -405,6 +406,24 @@ body.is-dragging,body.is-dragging *{cursor:grabbing!important}
 .ar-seg button+button{border-left:1px solid var(--line2)}
 .ar-seg button.on{background:#1c1e24;color:var(--text)}
 body.is-selecting,body.is-selecting *{user-select:none!important}
+.ps-owned{margin-top:10px}
+.ps-owned:empty{display:none}
+.po-h{display:flex;align-items:center;justify-content:space-between;height:26px;margin-bottom:6px;color:var(--dim);font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.07em}
+.po-h b{display:inline-grid;place-items:center;min-width:18px;height:16px;padding:0 5px;margin-left:4px;border-radius:8px;background:#1f2127;border:1px solid var(--line2);color:var(--soft);font-size:10px;letter-spacing:0}
+.po-h .spin{width:14px;height:14px}
+.po-h .btn .i{width:14px;height:14px}
+.po-list{display:flex;flex-direction:column;gap:6px;max-height:212px;overflow-y:auto}
+.po-row{display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:10px;border:1px solid var(--line2);background:var(--bg2);transition:border-color .12s,background .12s}
+.po-row:hover{border-color:#3a3e47;background:var(--hover)}
+.po-row.off{opacity:.55}
+.po-row .mi-av{width:28px;height:28px;border-radius:50%;flex:none;display:grid;place-items:center;background:#22252b;font-size:11px;font-weight:800;color:var(--muted);object-fit:cover}
+.po-t{min-width:0;flex:1;display:flex;flex-direction:column;gap:2px}
+.po-t b{font-size:12.5px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.po-t span{display:flex;align-items:center;gap:6px;color:var(--muted);font-size:11px;white-space:nowrap;overflow:hidden}
+.po-pill{height:16px;padding:0 6px;border-radius:5px;background:#20222a;border:1px solid var(--line2);color:var(--muted);font-size:10px;font-weight:700;display:inline-flex;align-items:center}
+.po-pill.live{background:#0f1c16;border-color:#1f5a3f;color:var(--green)}
+.po-pill.off{background:#2a1515;border-color:#5a2a2a;color:#f07070}
+.po-empty{padding:10px 12px;border-radius:10px;border:1px dashed var(--line2);color:var(--muted);font-size:11.5px;text-align:center}
 .rb-sub{color:var(--muted);font-size:12px;line-height:1.5;margin:4px 0 12px}
 .rb-sub b{color:var(--soft)}
 .rb-from{width:100%;justify-content:flex-start;gap:9px}
@@ -709,6 +728,7 @@ html[data-anon="on"] .pop .mi .t.anon-t{flex:1}
           <button class="btn" id="btnPsUse">Use</button>
         </div>
         <div class="status" id="psStatus"></div>
+        <div class="ps-owned" id="psOwned"></div>
       </section>
 
       <section class="card">
@@ -1007,12 +1027,22 @@ function onState(s) {
   else updateSelectionUI();
 }
 
+function fitStats() {
+  const st = $('#stats');
+  if (!st) return;
+  const chips = [...st.children];
+  chips.forEach(c => { c.style.display = ''; });
+  for (const i of [2, 0, 1]) { if (st.scrollWidth <= st.clientWidth + 1) break; if (chips[i]) chips[i].style.display = 'none'; }
+}
+window.addEventListener('resize', () => requestAnimationFrame(fitStats));
+
 function renderTop() {
   setHTML($('#stats'),
     `<span class="chip">${icon('users')}<b>${S.accounts.length}</b> accounts</span>` +
     `<span class="chip ${S.alive ? 'live' : ''}">${icon('activity')}<b>${S.alive}</b> running</span>` +
     `<span class="chip hide-md">${icon('cpu')}<b>${S.cpu}%</b> CPU</span>`);
   $('#btnRobux').hidden = !plusAccounts().length;
+  fitStats();
   const m = $('#btnMulti');
   m.classList.toggle('on', !!S.multi);
   m.title = S.multi ? 'Multi Instance is on. Click to turn it off.' : 'Allow several Roblox clients at once (needs admin)';
@@ -1080,6 +1110,29 @@ function renderPs() {
   else h = `<i class="dot off"></i><span class="t">Public servers</span>`;
   setHTML(st, h);
   $('#btnPsUse').disabled = !!ps.resolving;
+  renderOwnedPs();
+}
+
+function renderOwnedPs() {
+  const box = $('#psOwned'), op = S.ownedPs || {}, list = op.servers || [];
+  if (!box) return;
+  if (!S.placeId) { setHTML(box, ''); return; }
+  const head = `<div class="po-h"><span>Your servers${list.length ? ` <b>${list.length}</b>` : ''}</span>${op.loading ? '<span class="spin"></span>' : `<button class="btn icon sm ghost" data-po-refresh title="Check your accounts again">${icon('refresh')}</button>`}</div>`;
+  let body;
+  if (!list.length) {
+    body = `<div class="po-empty">${op.loading || !op.scanned ? 'Checking your accounts for private servers…' : 'None of your accounts own a private server for this game.'}</div>`;
+  } else {
+    body = list.map(s => {
+      const a = accById(s.ownerId);
+      const av = a ? accAvatar(a) : `<span class="mi-av">${esc((s.owner || '?').charAt(0).toUpperCase())}</span>`;
+      const full = s.max > 0 && s.playing >= s.max;
+      const meta = !s.active ? '<span class="po-pill off">Expired</span>'
+        : `<span class="po-pill${s.playing ? ' live' : ''}">${s.playing}${s.max ? '/' + s.max : ''} playing</span>`;
+      return `<div class="po-row${s.active ? '' : ' off'}">${av}<div class="po-t"><b title="${esc(s.name)}">${esc(s.name || 'Private server')}</b><span>${esc(a ? (a.alias || a.username) : s.owner)}${meta}</span></div>
+        <button class="btn sm${s.active && s.link && !full ? ' primary' : ''}" data-po-use="${s.id}" ${s.active && s.link ? '' : 'disabled'} title="${s.link ? (full ? 'Server is full' : 'Launch into this server') : 'No join link for this server'}">Use</button></div>`;
+    }).join('');
+  }
+  setHTML(box, head + `<div class="po-list">${body}</div>`);
 }
 
 function renderLaunch() {
@@ -2617,6 +2670,13 @@ $('#btnPsUse').onclick = () => {
 };
 $('#psLink').addEventListener('keydown', e => { if (e.key === 'Enter') $('#btnPsUse').click(); });
 $('#psStatus').addEventListener('click', e => { if (e.target.closest('[data-clear]')) send('clearPrivateServer'); });
+$('#psOwned').addEventListener('click', e => {
+  if (e.target.closest('[data-po-refresh]')) { if (S && S.ownedPs) S.ownedPs.loading = true; renderOwnedPs(); send('ownedPsRefresh'); return; }
+  const b = e.target.closest('[data-po-use]');
+  if (!b || b.disabled || !S || !S.ownedPs) return;
+  const s = (S.ownedPs.servers || []).find(x => String(x.id) === b.dataset.poUse);
+  if (s && s.link) { $('#psLink').value = s.link; send('usePrivateServer', { link: s.link }); }
+});
 
 $('#btnSavedPs').onclick = e => openPopover(e.currentTarget, pop => {
   const list = S.savedPs, canSave = !!S.ps.code;
@@ -2735,7 +2795,7 @@ function demoHandle(msg) {
       ps: { code: '', placeId: 0, name: '', resolving: false }, savedPs: [],
       build: { live: 'version-c5aecda2245e4fae', liveDate: '', past: 'version-e7d81637d42c4b23', pastDate: '', future: '', weao: true, active: 'version-e7d81637d42c4b23', preferred: '', status: '', progress: 0, busy: false, downloaded: ['version-e7d81637d42c4b23'] },
       net: { busy: false, cookieBusy: false, active: 0, adapters: [{ name: 'Ethernet', desc: 'Realtek PCIe 2.5GbE', mac: '04-7C-16-AA-10-3F', active: true }, { name: 'Wi-Fi', desc: 'Intel Wi-Fi 6E AX211', mac: '3C-21-9C-5E-77-02', active: false }] },
-      bestServer: true, lastServer: { placeId: 10561483644, has: true },
+      bestServer: true, lastServer: { placeId: 10561483644, has: true }, ownedPs: { placeId: 10561483644, loading: false, scanned: true, servers: [] },
       multi: false, alive: 0, cpu: 7, elevated: false, loginBusy: false
     };
   }

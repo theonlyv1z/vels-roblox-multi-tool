@@ -241,6 +241,7 @@ void Init(const std::wstring& exeDir) {
     ScrubAndLockRobloxCookieFile("startup");
     HoldMultiRobloxMutex();
     StartPlusChecker();
+    StartOwnedPsWatcher();
 }
 
 void Shutdown() {
@@ -3679,6 +3680,114 @@ std::string RobuxSend(long long fromId, long long toId, long long amount) {
     }
     AddActivity("Sent " + std::to_string(amount) + " Robux", a.username + " -> " + toName);
     return std::string("{\"type\":\"robuxSent\",\"ok\":true,\"amount\":") + std::to_string(amount) + ",\"to\":" + json::Quote(toName) + "}";
+}
+
+std::mutex ownedPsMutex;
+OwnedPsState ownedPs;
+static std::atomic<int> g_ownedPsKick{ 0 };
+
+static long long RootPlaceFor(long long placeId) {
+    std::lock_guard<std::mutex> lk(placeInfoMutex);
+    if (placeInfo.placeId == placeId && placeInfo.loaded && placeInfo.rootPlaceId > 0) return placeInfo.rootPlaceId;
+    return placeId;
+}
+
+static std::vector<OwnedPs> ScanOwnedFor(long long placeId) {
+    std::vector<OwnedPs> found;
+    std::vector<RobloxAccount> list;
+    {
+        std::lock_guard<std::mutex> lock(accountsMutex);
+        list = accounts;
+    }
+    std::set<long long> seen;
+    for (const auto& a : list) {
+        if (a.cookie.empty() || a.userId <= 0) continue;
+        std::string cursor;
+        for (int page = 0; page < 5; ++page) {
+            std::wstring path = L"/v1/games/" + std::to_wstring(placeId) + L"/private-servers?limit=100";
+            if (!cursor.empty()) path += L"&cursor=" + Widen(cursor);
+            HttpResponse r = HttpRequest(L"games.roblox.com", path, L"GET", a.cookie, {}, "");
+            json::Value root;
+            if (!r.ok || r.status != 200 || !json::Parse(r.body, root)) break;
+            for (const auto& s : root["data"].a) {
+                long long owner = s["owner"]["id"].i64();
+                long long vip = s["vipServerId"].i64();
+                if (owner != a.userId || vip <= 0 || seen.count(vip)) continue;
+                seen.insert(vip);
+                OwnedPs ps;
+                ps.vipServerId = vip;
+                ps.name = s["name"].str();
+                ps.ownerId = a.userId;
+                ps.ownerName = a.username;
+                ps.playing = (int)s["playing"].i64();
+                ps.maxPlayers = (int)s["maxPlayers"].i64();
+                HttpResponse d = HttpRequest(L"games.roblox.com", L"/v1/vip-servers/" + std::to_wstring(vip), L"GET", a.cookie, {}, "");
+                json::Value dj;
+                if (d.ok && d.status == 200 && json::Parse(d.body, dj)) {
+                    ps.link = dj["link"].str();
+                    std::string code = dj["joinCode"].str();
+                    if (ps.link.empty() && !code.empty())
+                        ps.link = "https://www.roblox.com/games/" + std::to_string(placeId) + "?privateServerLinkCode=" + code;
+                    const json::Value& sub = dj["subscription"];
+                    if (sub.type == json::Value::Object && sub["active"].type == json::Value::Bool) ps.active = sub["active"].b;
+                    if (ps.name.empty()) ps.name = dj["name"].str();
+                }
+                found.push_back(ps);
+            }
+            cursor = root["nextPageCursor"].str();
+            if (cursor.empty()) break;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(250));
+    }
+    std::stable_sort(found.begin(), found.end(), [](const OwnedPs& x, const OwnedPs& y) {
+        if (x.active != y.active) return x.active;
+        return x.playing > y.playing;
+    });
+    return found;
+}
+
+void RefreshOwnedPrivateServers() { ++g_ownedPsKick; }
+
+void StartOwnedPsWatcher() {
+    std::thread([]() {
+        long long lastPlace = -1;
+        int lastKick = g_ownedPsKick.load();
+        auto lastScan = std::chrono::steady_clock::now();
+        for (;;) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(700));
+            long long place = savedPlaceId.load();
+            int kick = g_ownedPsKick.load();
+            bool stale = std::chrono::steady_clock::now() - lastScan > std::chrono::minutes(5);
+            if (place == lastPlace && kick == lastKick && !stale) continue;
+            if (place <= 0) {
+                std::lock_guard<std::mutex> lk(ownedPsMutex);
+                ownedPs = OwnedPsState();
+                lastPlace = place;
+                lastKick = kick;
+                continue;
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(600));
+            if (savedPlaceId.load() != place) continue;
+            {
+                std::lock_guard<std::mutex> lk(ownedPsMutex);
+                if (ownedPs.placeId != place) ownedPs.servers.clear();
+                ownedPs.placeId = place;
+                ownedPs.loading = true;
+            }
+            auto servers = ScanOwnedFor(RootPlaceFor(place));
+            {
+                std::lock_guard<std::mutex> lk(ownedPsMutex);
+                if (ownedPs.placeId == place) {
+                    ownedPs.servers = servers;
+                    ownedPs.loading = false;
+                    ownedPs.scanned = true;
+                }
+            }
+            lastPlace = place;
+            lastKick = kick;
+            lastScan = std::chrono::steady_clock::now();
+        }
+    }).detach();
 }
 
 }

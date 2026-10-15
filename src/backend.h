@@ -171,6 +171,13 @@ void LaunchAccountIntoPrivateServer(int index, long long placeId, const std::str
 
 void OpenAccountWeb(int index);
 int PlusOf(long long userId);
+
+struct OwnedPs { long long vipServerId = 0; std::string name; long long ownerId = 0; std::string ownerName; int playing = 0; int maxPlayers = 0; std::string link; bool active = true; };
+struct OwnedPsState { long long placeId = 0; bool loading = false; bool scanned = false; std::vector<OwnedPs> servers; };
+extern std::mutex ownedPsMutex;
+extern OwnedPsState ownedPs;
+void RefreshOwnedPrivateServers();
+void StartOwnedPsWatcher();
 void StartPlusChecker();
 std::string RobuxPrepare(long long fromId, const std::string& recipient);
 std::string RobuxSend(long long fromId, long long toId, long long amount);
