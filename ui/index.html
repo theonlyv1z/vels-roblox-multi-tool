@@ -440,18 +440,24 @@ body.is-selecting,body.is-selecting *{user-select:none!important}
 .rb-done span{color:var(--muted);font-size:12.5px}
 @keyframes rbdraw{to{stroke-dashoffset:0}}
 @keyframes rbpop{0%{transform:scale(1)}45%{transform:scale(1.1)}100%{transform:scale(1)}}
-.rb-info{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;min-height:44px}
-.rb-info-load{display:flex;align-items:center;gap:8px;color:var(--muted);font-size:11.5px;padding:0 2px}
+.rb-info{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;margin-top:8px;min-height:46px}
+.rb-info-load{grid-column:1/-1;display:flex;align-items:center;justify-content:center;gap:8px;color:var(--muted);font-size:11.5px;padding:4px 2px;text-align:center}
 .rb-info-load.err{color:#f07070}
 .rb-info-load .spin{width:13px;height:13px}
-.rb-stat{display:flex;flex-direction:column;justify-content:center;gap:2px;min-width:86px;padding:6px 11px;border-radius:9px;border:1px solid var(--line2);background:var(--bg2)}
+.rb-stat{display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center;gap:3px;min-width:0;padding:7px 10px;border-radius:9px;border:1px solid var(--line2);background:var(--bg2)}
 .rb-stat span{color:var(--dim);font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;white-space:nowrap}
 .rb-stat b{display:flex;align-items:center;gap:4px;font-size:13px;font-weight:800;font-variant-numeric:tabular-nums}
 .rb-stat b .i{width:13px;height:13px}
+.rb-stat.skel{gap:6px}
+.rb-stat.skel i{display:block;height:8px;border-radius:4px;background:linear-gradient(90deg,#1c1f25 25%,#2b2f38 50%,#1c1f25 75%);background-size:200% 100%;animation:rbshim 1.15s linear infinite}
+.rb-stat.skel i:first-child{width:52%;height:7px}
+.rb-stat.skel i:last-child{width:68%;height:11px}
+@keyframes rbshim{from{background-position:200% 0}to{background-position:-200% 0}}
 .rb-stat.bal{border-color:#1f5a3f;background:#0f1c16}
 .rb-stat.bal b{color:var(--green)}
 .rb-stat.empty b{color:#f07070}
-.rb-quick{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
+.rb-quick{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:6px;margin-top:8px}
+.rb-quick .btn{justify-content:center;width:100%}
 .rb-err{color:#f07070;font-size:12px;margin:10px 0 0}
 .rb-card{display:flex;align-items:center;gap:12px;padding:12px;border:1px solid var(--line2);border-radius:12px;background:var(--bg2);margin:8px 0 12px}
 .rb-card img,.rb-noav{width:54px;height:54px;border-radius:50%;background:#22252b;flex:none}
@@ -1341,7 +1347,7 @@ function robuxModal(fromId, preset) {
     const infoBox = m.querySelector('#rbInfo');
     const drawInfo = () => {
       const info = robuxInfoCache[from];
-      if (!info) { infoBox.innerHTML = '<div class="rb-info-load"><span class="spin"></span>Loading balance and limits…</div>'; return; }
+      if (!info) { infoBox.innerHTML = '<div class="rb-stat skel"><i></i><i></i></div>'.repeat(3); return; }
       if (!info.ok) { infoBox.innerHTML = `<div class="rb-info-load err">${esc(info.error || 'Could not load this account\'s limits.')}</div>`; return; }
       const when = ms => { if (!ms) return ''; const h = Math.max(0, ms - Date.now()) / 36e5; return h < 1 ? `${Math.max(1, Math.round(h * 60))} min` : h < 48 ? `${Math.round(h)} h` : `${Math.round(h / 24)} days`; };
       const tip = (limit, ms) => `Limit ${limit >= 0 ? limit.toLocaleString() : '?'}${ms ? ` · more frees up in ${when(ms)}` : ''}`;
