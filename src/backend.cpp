@@ -3582,6 +3582,36 @@ static std::string RobloxErrorText(const std::string& body, int status) {
     return "Roblox said no (HTTP " + std::to_string(status) + ").";
 }
 
+std::string RobuxLookup(const std::string& raw) {
+    std::string head = "{\"type\":\"robuxLookup\",\"q\":" + json::Quote(raw);
+    std::string name = raw;
+    while (!name.empty() && (name.front() == ' ' || name.front() == '@')) name.erase(name.begin());
+    while (!name.empty() && name.back() == ' ') name.pop_back();
+    if (name.empty()) return head + ",\"ok\":false}";
+    long long id = 0;
+    bool numeric = std::all_of(name.begin(), name.end(), [](char c) { return c >= '0' && c <= '9'; });
+    if (numeric && name.size() < 19) id = std::stoll(name);
+    else {
+        HttpResponse r = HttpRequest(L"users.roblox.com", L"/v1/usernames/users", L"POST", "",
+            { { L"Content-Type", L"application/json" } },
+            "{\"usernames\":[" + json::Quote(name) + "],\"excludeBannedUsers\":true}");
+        json::Value root;
+        if (!r.ok || r.status != 200 || !json::Parse(r.body, root)) return head + ",\"ok\":false,\"error\":\"Couldn't check\"}";
+        if (!root["data"].a.empty()) id = root["data"].a[0]["id"].i64();
+    }
+    if (id <= 0) return head + ",\"ok\":false,\"error\":\"Not found\"}";
+    HttpResponse u = HttpRequest(L"users.roblox.com", L"/v1/users/" + std::to_wstring(id), L"GET", "", {}, "");
+    json::Value uj;
+    if (!u.ok || u.status != 200 || !json::Parse(u.body, uj)) return head + ",\"ok\":false,\"error\":\"Not found\"}";
+    std::string avatar;
+    HttpResponse t = HttpRequest(L"thumbnails.roblox.com",
+        L"/v1/users/avatar-headshot?userIds=" + std::to_wstring(id) + L"&size=48x48&format=Png&isCircular=false", L"GET", "", {}, "");
+    json::Value tj;
+    if (t.ok && t.status == 200 && json::Parse(t.body, tj) && !tj["data"].a.empty()) avatar = tj["data"].a[0]["imageUrl"].str();
+    return head + ",\"ok\":true,\"to\":{\"id\":" + std::to_string(id) + ",\"name\":" + json::Quote(uj["name"].str()) +
+        ",\"displayName\":" + json::Quote(uj["displayName"].str()) + ",\"avatar\":" + json::Quote(avatar) + "}}";
+}
+
 std::string RobuxPrepare(long long fromId, const std::string& recipientRaw) {
     const char* T = "robuxPrep";
     RobloxAccount a;

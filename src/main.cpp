@@ -904,6 +904,9 @@ static void HandlePageMessage(const std::string& text) {
         if (text.empty()) return;
         if (CopyToClipboard(text)) backend::Log("[v] Copied the " + (what.empty() ? std::string("text") : what) + ".");
         else backend::Log("[!] Could not access the clipboard.");
+    } else if (cmd == "robuxLookup") {
+        std::string q = m["q"].str();
+        std::thread([q]() { QueuePageMessage(backend::RobuxLookup(q)); }).detach();
     } else if (cmd == "robuxInfo") {
         long long from = m["from"].i64();
         std::thread([from]() { QueuePageMessage(backend::RobuxInfo(from)); }).detach();

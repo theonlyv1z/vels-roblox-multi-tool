@@ -182,6 +182,7 @@ void StartPlusChecker();
 std::string RobuxPrepare(long long fromId, const std::string& recipient);
 std::string RobuxSend(long long fromId, long long toId, long long amount);
 std::string RobuxInfo(long long fromId);
+std::string RobuxLookup(const std::string& query);
 void ForceWindowedStart();
 
 void FetchAccountStats(int index);

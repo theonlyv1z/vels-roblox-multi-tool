@@ -423,7 +423,10 @@ body.is-selecting,body.is-selecting *{user-select:none!important}
 .po-pill{height:16px;padding:0 6px;border-radius:5px;background:#20222a;border:1px solid var(--line2);color:var(--muted);font-size:10px;font-weight:700;display:inline-flex;align-items:center}
 .po-pill.live{background:#0f1c16;border-color:#1f5a3f;color:var(--green)}
 .po-pill.off{background:#2a1515;border-color:#5a2a2a;color:#f07070}
-.po-copy.done{color:var(--green)}
+.po-copy{transition:color .15s,background .15s,transform .12s}
+.po-copy:active{transform:scale(.9)}
+.po-copy.done{color:var(--green);background:#0f1c16}
+.po-copy.done .i{animation:rbpop2 .22s ease-out}
 .po-row .po-copy .i{width:14px;height:14px}
 .po-empty{padding:10px 12px;border-radius:10px;border:1px dashed var(--line2);color:var(--muted);font-size:11.5px;text-align:center}
 .rb-sub{color:var(--muted);font-size:12px;line-height:1.5;margin:4px 0 12px}
@@ -440,6 +443,15 @@ body.is-selecting,body.is-selecting *{user-select:none!important}
 .rb-done span{color:var(--muted);font-size:12.5px}
 @keyframes rbdraw{to{stroke-dashoffset:0}}
 @keyframes rbpop{0%{transform:scale(1)}45%{transform:scale(1.1)}100%{transform:scale(1)}}
+.rb-to{gap:9px}
+.rb-to-ic{width:22px;height:22px;display:grid;place-items:center;flex:none;border-radius:50%;overflow:hidden}
+.rb-to-ic img{width:22px;height:22px;border-radius:50%;object-fit:cover;background:#22252b;animation:fade .25s}
+.rb-to-hint{display:flex;align-items:center;gap:5px;flex:none;max-width:46%;font-size:11.5px;font-weight:700;color:var(--muted);white-space:nowrap;overflow:hidden}
+.rb-to-hint span:not(.spin){overflow:hidden;text-overflow:ellipsis}
+.rb-to-hint.ok{color:var(--green);animation:fade .2s}
+.rb-to-hint.bad{color:#f07070;animation:fade .2s}
+.rb-to-hint .i{width:13px;height:13px;flex:none}
+.rb-to-hint .spin{width:12px;height:12px}
 .rb-info{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;margin-top:8px;min-height:46px}
 .rb-info-load{grid-column:1/-1;display:flex;align-items:center;justify-content:center;gap:8px;color:var(--muted);font-size:11.5px;padding:4px 2px;text-align:center}
 .rb-info-load.err{color:#f07070}
@@ -457,7 +469,13 @@ body.is-selecting,body.is-selecting *{user-select:none!important}
 .rb-stat.bal b{color:var(--green)}
 .rb-stat.empty b{color:#f07070}
 .rb-quick{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:6px;margin-top:8px}
-.rb-quick .btn{justify-content:center;width:100%}
+.rb-quick .btn{justify-content:center;width:100%;transition:background .18s,border-color .18s,color .18s,transform .12s,box-shadow .18s}
+.rb-quick .btn:active{transform:scale(.94)}
+.rb-quick .btn.on{background:var(--silver1);border-color:var(--silver1);color:var(--accent-ink);box-shadow:0 4px 14px -6px var(--silver1)}
+.field.rb-pulse{animation:rbpulse .45s ease-out}
+@keyframes rbpulse{0%{box-shadow:0 0 0 0 rgba(67,209,143,.45);border-color:var(--green)}100%{box-shadow:0 0 0 7px rgba(67,209,143,0)}}
+#rbAmt.rb-pop{animation:rbpop2 .22s ease-out}
+@keyframes rbpop2{0%{transform:translateY(3px);opacity:.55}100%{transform:none;opacity:1}}
 .rb-err{color:#f07070;font-size:12px;margin:10px 0 0}
 .rb-card{display:flex;align-items:center;gap:12px;padding:12px;border:1px solid var(--line2);border-radius:12px;background:var(--bg2);margin:8px 0 12px}
 .rb-card img,.rb-noav{width:54px;height:54px;border-radius:50%;background:#22252b;flex:none}
@@ -922,6 +940,7 @@ const ICONS = {
   link: '<path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>',
   userPlus: '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M19 8v6M22 11h-6"/>',
   login: '<path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><path d="m10 17 5-5-5-5M15 12H3"/>',
+  copy: '<rect x="9" y="9" width="11" height="11" rx="2.2"/><path d="M5.5 15H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v.5"/>',
   clipboard: '<rect x="8" y="2" width="8" height="4" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/>',
   file: '<path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5z"/><path d="M14 2v6h6M8 13h8M8 17h5"/>',
   download: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5M12 15V3"/>',
@@ -1148,7 +1167,7 @@ function renderOwnedPs() {
       const meta = !s.active ? '<span class="po-pill off">Expired</span>'
         : `<span class="po-pill${s.playing ? ' live' : ''}">${s.playing}${s.max ? '/' + s.max : ''} playing</span>`;
       return `<div class="po-row${s.active ? '' : ' off'}">${av}<div class="po-t"><b title="${esc(s.name)}">${esc(s.name || 'Private server')}</b><span>${esc(a ? (a.alias || a.username) : s.owner)}${meta}</span></div>
-        <button class="btn icon sm ghost po-copy" data-po-copy="${s.id}" ${s.link ? '' : 'disabled'} title="${s.link ? 'Copy the server link' : 'No link for this server'}">${icon('clipboard')}</button>
+        <button class="btn icon sm ghost po-copy" data-po-copy="${s.id}" ${s.link ? '' : 'disabled'} title="${s.link ? 'Copy the server link' : 'No link for this server'}">${icon('copy')}</button>
         <button class="btn sm${s.active && s.link && !full ? ' primary' : ''}" data-po-use="${s.id}" ${s.active && s.link ? '' : 'disabled'} title="${s.link ? (full ? 'Server is full' : 'Launch into this server') : 'No join link for this server'}">Use</button></div>`;
     }).join('');
   }
@@ -1306,7 +1325,25 @@ function moveTo(id, to) {
   send('move', { id, to });
 }
 
-let robuxWait = null, robuxInfoCb = null;
+let robuxWait = null, robuxInfoCb = null, robuxLookupCb = null;
+let sfxCtx = null;
+function playCopySfx() {
+  try {
+    sfxCtx = sfxCtx || new (window.AudioContext || window.webkitAudioContext)();
+    const t0 = sfxCtx.currentTime;
+    [[880, 0], [1318.5, 0.07]].forEach(([f, d]) => {
+      const o = sfxCtx.createOscillator(), g = sfxCtx.createGain();
+      o.type = 'sine';
+      o.frequency.setValueAtTime(f, t0 + d);
+      g.gain.setValueAtTime(0, t0 + d);
+      g.gain.linearRampToValueAtTime(0.09, t0 + d + 0.012);
+      g.gain.exponentialRampToValueAtTime(0.0001, t0 + d + 0.16);
+      o.connect(g).connect(sfxCtx.destination);
+      o.start(t0 + d);
+      o.stop(t0 + d + 0.18);
+    });
+  } catch (_) {}
+}
 const robuxInfoCache = {};
 const humanKey = k => k.replace(/([a-z0-9])([A-Z])/g, '$1 $2').replace(/^./, c => c.toUpperCase()).toLowerCase().replace(/^./, c => c.toUpperCase());
 function limitStats(limits) {
@@ -1336,13 +1373,40 @@ function robuxModal(fromId, preset) {
     <button class="btn rb-from" id="rbFrom"></button>
     <div class="rb-info" id="rbInfo"></div>
     <div class="label mt">To</div>
-    <div class="field"><span data-i="user"></span><input id="rbTo" maxlength="40" spellcheck="false" placeholder="Username or user ID" value="${esc(preset.to || '')}"></div>
+    <div class="field rb-to"><span class="rb-to-ic" id="rbToIc">${icon('user')}</span><input id="rbTo" maxlength="40" spellcheck="false" autocomplete="off" placeholder="Username or UserID" value="${esc(preset.to || '')}"><span class="rb-to-hint" id="rbToHint"></span></div>
     <div class="label mt">Amount</div>
     <div class="field"><span data-i="robux"></span><input id="rbAmt" inputmode="numeric" maxlength="6" spellcheck="false" placeholder="10 or more" value="${preset.amount || ''}"></div>
     <div class="rb-quick">${[10, 50, 100, 500, 1000].map(v => `<button class="btn sm" data-amt="${v}">${v}</button>`).join('')}</div>
     <p class="rb-err" id="rbErr" hidden></p>
     <div class="foot"><button class="btn ghost" data-x>Cancel</button><button class="btn primary" data-ok>Review</button></div>`, (m, close) => {
     m.querySelectorAll('[data-i]').forEach(el => el.insertAdjacentHTML('afterbegin', icon(el.dataset.i)));
+    const toIc = m.querySelector('#rbToIc'), toHint = m.querySelector('#rbToHint');
+    let lookupTimer = 0, lookupQ = '';
+    const drawTo = (state, r) => {
+      toHint.className = 'rb-to-hint' + (state ? ' ' + state : '');
+      if (state === 'ok') {
+        toIc.innerHTML = r.to.avatar ? `<img src="${esc(r.to.avatar)}" alt="">` : icon('user');
+        toHint.innerHTML = `${icon('check')}<span>${esc(r.to.displayName || r.to.name)}</span>`;
+        toHint.title = `@${r.to.name} · ID ${r.to.id}`;
+      } else {
+        toIc.innerHTML = icon('user');
+        toHint.title = '';
+        toHint.innerHTML = state === 'busy' ? '<span class="spin"></span>' : state === 'bad' ? `<span>${esc((r && r.error) || 'Not found')}</span>` : '';
+      }
+    };
+    const lookup = () => {
+      const q = m.querySelector('#rbTo').value.trim().replace(/^@/, '');
+      clearTimeout(lookupTimer);
+      if (!q) { lookupQ = ''; drawTo(''); return; }
+      drawTo('busy');
+      lookupTimer = setTimeout(() => {
+        lookupQ = q;
+        robuxLookupCb = r => { if (r.q !== lookupQ) return; drawTo(r.ok ? 'ok' : 'bad', r); };
+        send('robuxLookup', { q });
+      }, 420);
+    };
+    m.querySelector('#rbTo').addEventListener('input', lookup);
+    if (preset.to) lookup();
     const fromBtn = m.querySelector('#rbFrom'), toIn = m.querySelector('#rbTo'), amtIn = m.querySelector('#rbAmt'), err = m.querySelector('#rbErr'), ok = m.querySelector('[data-ok]');
     const infoBox = m.querySelector('#rbInfo');
     const drawInfo = () => {
@@ -1371,8 +1435,35 @@ function robuxModal(fromId, preset) {
     const showErr = t => { err.textContent = t; err.hidden = !t; };
     drawFrom();
     fromBtn.onclick = e => openMenu(e.currentTarget, plusAccounts().map(a => ({ account: a, label: a.alias || a.username, active: a.id === from, on: () => { from = a.id; drawFrom(); } })), { width: 300 });
-    m.querySelector('.rb-quick').onclick = e => { const q = e.target.closest('[data-amt]'); if (q) { amtIn.value = q.dataset.amt; showErr(''); } };
-    amtIn.addEventListener('input', () => { const v = amtIn.value.replace(/\D/g, ''); if (v !== amtIn.value) amtIn.value = v; });
+    const syncQuick = () => m.querySelectorAll('[data-amt]').forEach(b => b.classList.toggle('on', b.dataset.amt === amtIn.value));
+    const replay = (el, cls) => { el.classList.remove(cls); void el.offsetWidth; el.classList.add(cls); };
+    let countAnim = 0;
+    const countTo = target => {
+      cancelAnimationFrame(countAnim);
+      const from = Number(amtIn.value || 0), start = performance.now(), dur = 280;
+      const step = t => {
+        const k = Math.min(1, (t - start) / dur), e = 1 - Math.pow(1 - k, 3);
+        amtIn.value = String(Math.round(from + (target - from) * e));
+        if (k < 1) countAnim = requestAnimationFrame(step); else { amtIn.value = String(target); syncQuick(); }
+      };
+      countAnim = requestAnimationFrame(step);
+    };
+    m.querySelector('.rb-quick').onclick = e => {
+      const q = e.target.closest('[data-amt]');
+      if (!q) return;
+      showErr('');
+      m.querySelectorAll('[data-amt]').forEach(b => b.classList.toggle('on', b === q));
+      replay(amtIn.closest('.field'), 'rb-pulse');
+      countTo(Number(q.dataset.amt));
+    };
+    amtIn.addEventListener('input', () => {
+      const v = amtIn.value.replace(/\D/g, '');
+      if (v !== amtIn.value) amtIn.value = v;
+      cancelAnimationFrame(countAnim);
+      replay(amtIn, 'rb-pop');
+      syncQuick();
+    });
+    syncQuick();
     const go = () => {
       const to = toIn.value.trim().replace(/^@/, ''), amount = Number(amtIn.value || 0);
       if (!to) { showErr('Type who to send Robux to.'); toIn.focus(); return; }
@@ -2741,7 +2832,14 @@ $('#psOwned').addEventListener('click', e => {
   const c = e.target.closest('[data-po-copy]');
   if (c && !c.disabled && S && S.ownedPs) {
     const s = (S.ownedPs.servers || []).find(x => String(x.id) === c.dataset.poCopy);
-    if (s && s.link) { send('copyText', { text: s.link, what: 'link for ' + (s.name || 'the private server') }); c.classList.add('done'); setTimeout(() => c.classList.remove('done'), 1200); }
+    if (s && s.link) {
+      send('copyText', { text: s.link, what: 'link for ' + (s.name || 'the private server') });
+      playCopySfx();
+      c.classList.add('done');
+      c.innerHTML = icon('check');
+      clearTimeout(c._t);
+      c._t = setTimeout(() => { c.classList.remove('done'); c.innerHTML = icon('copy'); }, 1300);
+    }
     return;
   }
   const b = e.target.closest('[data-po-use]');
@@ -2893,6 +2991,7 @@ if (!DEMO) {
     else if (m.type === 'log') m.items.forEach(it => toastFromLog(it.text));
     else if (m.type === 'robuxPrep' || m.type === 'robuxSent') { const f = robuxWait; robuxWait = null; if (f) f(m); }
     else if (m.type === 'robuxInfo') { if (robuxInfoCb) robuxInfoCb(m); }
+    else if (m.type === 'robuxLookup') { if (robuxLookupCb) robuxLookupCb(m); }
     else if (m.type === 'needChrome') { $('#loginWait').classList.remove('show'); chromeModal(m.what); }
     else if (m.type === 'relaunch') {
       if (m.stage === 'pending') showHandoff('Waiting for administrator approval', 'Accept the Windows prompt to continue.');
