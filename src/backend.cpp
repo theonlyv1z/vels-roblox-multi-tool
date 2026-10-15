@@ -21,6 +21,7 @@
 #include <fstream>
 #include <cstring>
 #include <regex>
+#include <cctype>
 #include <set>
 #include <functional>
 #include <algorithm>
@@ -2108,35 +2109,76 @@ LastServer lastServer;
 
 std::string FindBestServer(long long placeId) {
     if (placeId <= 0) return "";
-    HttpResponse resp = HttpRequest(L"games.roblox.com",
-        L"/v1/games/" + std::to_wstring(placeId) + L"/servers/Public?excludeFullGames=true&limit=100",
-        L"GET", "", {}, "");
-    if (!resp.ok || resp.status != 200) {
-        Log("[!] Could not fetch the server list (HTTP " + std::to_string(resp.status) + ").");
-        return "";
+
+    // The "ping" Roblox reports is the average ping of the players already in
+    // a server, not ours, and Roblox does not publish server regions. It still
+    // tracks region well, but only when there are enough players for the
+    // average to mean something: empty and one-player servers report 0 or
+    // near it and would otherwise always win. So look across several pages and
+    // only rank servers with a real sample.
+    const int kMaxPages = 5;
+    const long long kMinPlayers = 3;
+
+    std::string best, fallback;
+    double bestPing = 1e18, fallbackPing = 1e18;
+    long long bestPlaying = -1, fallbackPlaying = -1;
+    int scanned = 0;
+    std::string cursor;
+
+    for (int page = 0; page < kMaxPages; ++page) {
+        std::wstring path = L"/v1/games/" + std::to_wstring(placeId) +
+            L"/servers/Public?excludeFullGames=true&limit=100";
+        if (!cursor.empty()) path += L"&cursor=" + Widen(cursor);
+
+        HttpResponse resp = HttpRequest(L"games.roblox.com", path, L"GET", "", {}, "");
+        if (!resp.ok || resp.status != 200) {
+            if (page == 0) {
+                Log("[!] Could not fetch the server list (HTTP " + std::to_string(resp.status) + ").");
+                return "";
+            }
+            break;
+        }
+
+        json::Value root;
+        if (!json::Parse(resp.body, root)) {
+            if (page == 0) { Log("[!] Could not parse the server list."); return ""; }
+            break;
+        }
+
+        for (const auto& s : root["data"].a) {
+            std::string id = s["id"].str();
+            if (id.empty()) continue;
+            long long playing = s["playing"].i64(), maxPlayers = s["maxPlayers"].i64();
+            if (maxPlayers > 0 && playing >= maxPlayers) continue;
+            if (s["ping"].type != json::Value::Number) continue;
+            double ping = s["ping"].n;
+            if (ping <= 0) continue;
+            ++scanned;
+
+            bool trusted = playing >= kMinPlayers;
+            double& rankPing = trusted ? bestPing : fallbackPing;
+            long long& rankPlaying = trusted ? bestPlaying : fallbackPlaying;
+            std::string& rankId = trusted ? best : fallback;
+
+            if (ping < rankPing || (ping == rankPing && playing > rankPlaying)) {
+                rankPing = ping;
+                rankPlaying = playing;
+                rankId = id;
+            }
+        }
+
+        cursor = root["nextPageCursor"].str();
+        if (cursor.empty()) break;
     }
 
-    json::Value root;
-    if (!json::Parse(resp.body, root)) { Log("[!] Could not parse the server list."); return ""; }
-
-    std::string best;
-    double bestPing = 1e18;
-    long long bestPlaying = -1;
-    for (const auto& s : root["data"].a) {
-        std::string id = s["id"].str();
-        if (id.empty()) continue;
-        long long playing = s["playing"].i64(), maxPlayers = s["maxPlayers"].i64();
-        if (maxPlayers > 0 && playing >= maxPlayers) continue;
-        double ping = s["ping"].type == json::Value::Number ? s["ping"].n : 1e17;
-        if (ping < bestPing || (ping == bestPing && playing > bestPlaying)) {
-            bestPing = ping;
-            bestPlaying = playing;
-            best = id;
-        }
+    if (best.empty() && !fallback.empty()) {
+        best = fallback;
+        bestPing = fallbackPing;
     }
 
     if (best.empty()) Log("[!] No joinable public servers found for " + std::to_string(placeId) + ".");
-    else Log("[i] Best server ~" + std::to_string((int)(bestPing + 0.5)) + "ms ping.");
+    else Log("[i] Best of " + std::to_string(scanned) + " servers: ~" +
+             std::to_string((int)(bestPing + 0.5)) + "ms average player ping.");
     return best;
 }
 
@@ -3420,9 +3462,16 @@ void LoadServerBrowser(long long placeId, bool smallestFirst, long long regionUs
         if (cookie.empty() && !accounts.empty()) cookie = accounts[0].cookie;
     }
     if (cookie.empty()) return;
-    for (size_t i = 0; i < rows.size() && i < 60; ++i) {
+    // Every row gets a lookup. Capping it left the rest of the list on
+    // "Finding region..." for good.
+    for (size_t i = 0; i < rows.size(); ++i) {
         if (gen != g_serversGen) return;
         std::string region = ServerRegion(placeId, rows[i].id, cookie);
+        if (region.empty()) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(900));
+            if (gen != g_serversGen) return;
+            region = ServerRegion(placeId, rows[i].id, cookie);
+        }
         if (gen != g_serversGen) return;
         {
             std::lock_guard<std::mutex> lock(serversMutex);
@@ -3514,6 +3563,83 @@ void LoadFriends(long long userId) {
         });
     }
     finish("", std::move(rows), (int)ids.size(), online);
+}
+
+// Anyone by username, not just friends. Presence is asked as the chosen
+// account, so Roblox only hands back a joinable gameId when that account is
+// allowed to follow them (their "who can join me" privacy setting).
+void LookupUser(long long accountId, const std::string& rawName) {
+    std::string cookie;
+    {
+        std::lock_guard<std::mutex> lock(accountsMutex);
+        for (auto& a : accounts) if (a.userId == accountId) cookie = a.cookie;
+    }
+
+    std::string username;
+    for (char c : rawName) {
+        if (c == 0x40 && username.empty()) continue;
+        if (std::isalnum((unsigned char)c) || c == 0x5f) username += c;
+        else if (!std::isspace((unsigned char)c)) { username.clear(); break; }
+    }
+
+    {
+        std::lock_guard<std::mutex> lock(friendsMutex);
+        friendsState = {};
+        friendsState.userId = accountId;
+        friendsState.loading = true;
+        friendsState.searched = username.empty() ? rawName : username;
+    }
+    auto finish = [&](const std::string& error, std::vector<FriendRow> rows) {
+        std::lock_guard<std::mutex> lock(friendsMutex);
+        if (friendsState.userId != accountId) return;
+        friendsState.loading = false;
+        friendsState.error = error;
+        friendsState.rows = std::move(rows);
+    };
+
+    if (cookie.empty()) { finish("Pick an account first.", {}); return; }
+    if (username.size() < 3 || username.size() > 20) { finish("That isn't a valid Roblox username.", {}); return; }
+
+    HttpResponse ur = PostJsonAs(L"users.roblox.com", L"/v1/usernames/users", cookie,
+        "{\"usernames\":[\"" + username + "\"],\"excludeBannedUsers\":true}");
+    json::Value users;
+    if (!ur.ok || ur.status != 200 || !json::Parse(ur.body, users)) {
+        finish("Could not look that user up (status " + std::to_string(ur.status) + ").", {});
+        return;
+    }
+    if (users["data"].a.empty()) { finish("No Roblox user called @" + username + ".", {}); return; }
+
+    const json::Value& u = users["data"].a[0];
+    FriendRow row;
+    row.id = u["id"].i64();
+    row.name = u["name"].str();
+    row.display = u["displayName"].str();
+
+    HttpResponse pr = PostJsonAs(L"presence.roblox.com", L"/v1/presence/users", cookie,
+        "{\"userIds\":[" + std::to_string(row.id) + "]}");
+    json::Value pres;
+    if (!pr.ok || pr.status != 200 || !json::Parse(pr.body, pres) || pres["userPresences"].a.empty()) {
+        finish("Could not read @" + row.name + "'s status (status " + std::to_string(pr.status) + ").", {});
+        return;
+    }
+
+    const json::Value& p = pres["userPresences"].a[0];
+    long long type = p["userPresenceType"].i64();
+    if (type == 0) { finish("@" + row.name + " is offline.", {}); return; }
+    if (type != 2) { finish("@" + row.name + " is online but not in a game.", {}); return; }
+
+    row.game = p["lastLocation"].str();
+    row.gameId = p["gameId"].str();
+    row.placeId = p["placeId"].i64();
+    row.rootPlaceId = p["rootPlaceId"].i64();
+
+    HttpResponse tr = HttpRequest(L"thumbnails.roblox.com",
+        L"/v1/users/avatar-headshot?userIds=" + std::to_wstring(row.id) + L"&size=48x48&format=Png&isCircular=false", L"GET", "", {}, "");
+    json::Value thumbs;
+    if (tr.ok && tr.status == 200 && json::Parse(tr.body, thumbs) && !thumbs["data"].a.empty())
+        row.avatarUrl = thumbs["data"].a[0]["imageUrl"].str();
+
+    finish("", { row });
 }
 
 std::mutex plusMutex;

@@ -334,10 +334,11 @@ extern ServerBrowserState serverBrowser;
 void LoadServerBrowser(long long placeId, bool smallestFirst, long long regionUserId);
 
 struct FriendRow { long long id = 0; std::string name; std::string display; std::string game; std::string gameId; std::string avatarUrl; long long placeId = 0; long long rootPlaceId = 0; };
-struct FriendsState { long long userId = 0; bool loading = false; std::string error; int total = 0; int online = 0; std::vector<FriendRow> rows; };
+struct FriendsState { long long userId = 0; bool loading = false; std::string error; int total = 0; int online = 0; std::vector<FriendRow> rows; std::string searched; };
 extern std::mutex friendsMutex;
 extern FriendsState friendsState;
 void LoadFriends(long long userId);
+void LookupUser(long long accountId, const std::string& username);
 
 struct PlaytimeGame { long long universeId = 0; long long rootPlaceId = 0; std::string name; std::string iconUrl; };
 struct PlaytimeEntry { long long userId = 0; long long universeId = 0; long long seconds = 0; long long lastPlayed = 0; };

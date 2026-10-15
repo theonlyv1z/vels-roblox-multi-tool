@@ -515,7 +515,7 @@ static std::string BuildStateJson() {
         std::lock_guard<std::mutex> lock(backend::friendsMutex);
         const auto& fs = backend::friendsState;
         o += ",\"friends\":{\"userId\":" + N(fs.userId) + ",\"loading\":" + B(fs.loading) + ",\"error\":" + Quote(fs.error) +
-             ",\"total\":" + N(fs.total) + ",\"online\":" + N(fs.online) + ",\"rows\":[";
+             ",\"total\":" + N(fs.total) + ",\"online\":" + N(fs.online) + ",\"searched\":" + Quote(fs.searched) + ",\"rows\":[";
         for (size_t i = 0; i < fs.rows.size(); ++i) {
             const auto& r = fs.rows[i];
             o += std::string(i ? "," : "") + "{\"id\":" + N(r.id) + ",\"name\":" + Quote(r.name) + ",\"display\":" + Quote(r.display) +
@@ -797,6 +797,10 @@ static void HandlePageMessage(const std::string& text) {
     } else if (cmd == "friendsLoad") {
         long long userId = m["userId"].i64();
         std::thread([userId]() { backend::LoadFriends(userId); }).detach();
+    } else if (cmd == "userLookup") {
+        long long accountId = m["userId"].i64();
+        std::string username = m["username"].str();
+        std::thread([accountId, username]() { backend::LookupUser(accountId, username); }).detach();
     } else if (cmd == "playtimeClear") {
         backend::ClearPlaytime();
     } else if (cmd == "historyClear") {

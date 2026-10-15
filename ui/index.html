@@ -2231,7 +2231,9 @@ $('#btnServers').onclick = () => {
       const total = rows.length, known = rows.filter(r => r.region).length;
       if (hideFull) rows = rows.filter(r => r.playing < r.max);
       if (region) rows = rows.filter(r => r.region === region);
-      if (mode === 'ping') rows = rows.slice().sort((a, b) => a.ping - b.ping);
+      // Roblox leaves ping off some servers. Those are stored as 0, so they
+      // must sort last rather than looking like the best servers there are.
+      if (mode === 'ping') rows = rows.slice().sort((a, b) => (a.ping > 0 ? a.ping : 1e9) - (b.ping > 0 ? b.ping : 1e9));
       const place = S.place && S.place.loaded ? S.place.name : 'this place';
       m.querySelector('#svSub').textContent = `Public servers for ${place}. Join sends the selected accounts, or the top one.`;
       m.querySelector('#svNote').innerHTML = sv.loading ? '' : icon('info') + `${total} servers loaded · ${known} regions found`;
@@ -2240,7 +2242,7 @@ $('#btnServers').onclick = () => {
         : !rows.length ? '<div class="hist-empty">No servers match these filters.</div>'
         : rows.map(r => `<div class="hist-row sv-row">
             <div class="sv-pl"><b>${r.playing}<span>/${r.max}</span></b><i><em style="width:${Math.round(100 * r.playing / Math.max(1, r.max))}%"></em></i></div>
-            <div class="txt"><b>${r.region ? esc(r.region) : r.tried ? 'Unknown region' : '<span class="sv-wait">Finding region…</span>'}</b><span>${r.ping} ms avg ping · ${r.fps} fps · ${esc(r.id.slice(0, 8))}</span></div>
+            <div class="txt"><b>${r.region ? esc(r.region) : r.tried ? 'Unknown region' : '<span class="sv-wait">Finding region…</span>'}</b><span>${r.ping > 0 ? r.ping + ' ms avg ping' : 'No ping reported'} · ${r.fps} fps · ${esc(r.id.slice(0, 8))}</span></div>
             <button class="btn sm good" data-join="${esc(r.id)}">${icon('play')}Join</button>
             <button class="btn icon sm ghost" data-copy="${esc(r.id)}" title="Copy server ID">${icon('clipboard')}</button></div>`).join('');
     };
@@ -2278,13 +2280,24 @@ $('#btnServers').onclick = () => {
 let friendsRefresh = null;
 $('#btnFriends').onclick = () => {
   if (!S || !S.accounts.length) { toast('info', 'Add an account first.'); return; }
-  let who = (orderedSelection()[0]) || S.accounts[0].id, key = '';
-  const load = () => { key = ''; if (S.friends) { S.friends.loading = true; S.friends.rows = []; S.friends.userId = who; } send('friendsLoad', { userId: who }); };
+  let who = (orderedSelection()[0]) || S.accounts[0].id, key = '', lookup = '';
+  const load = () => { key = ''; lookup = ''; if (S.friends) { S.friends.loading = true; S.friends.rows = []; S.friends.userId = who; S.friends.searched = ''; } send('friendsLoad', { userId: who }); };
+  const find = name => {
+    name = (name || '').trim().replace(/^@/, '');
+    if (!name) { load(); return; }
+    key = ''; lookup = name;
+    if (S.friends) { S.friends.loading = true; S.friends.rows = []; S.friends.userId = who; S.friends.searched = name; }
+    send('userLookup', { userId: who, username: name });
+  };
   openModal(`<h3>Friends in game</h3>
     <p>Friends of the chosen account who are playing right now. Join sends the selected accounts, or that account, into the same server.</p>
     <div class="sv-bar">
       <button class="adapter" id="frWho" style="flex:1"><span id="frWhoLbl" class="anon-t"></span><span class="chev">${icon('chevron')}</span></button>
       <button class="btn icon sm" id="frReload" title="Refresh">${icon('refresh')}</button>
+    </div>
+    <div class="sv-bar">
+      <div class="field" style="flex:1"><span>${icon('search')}</span><input id="frUser" maxlength="21" spellcheck="false" autocomplete="off" placeholder="Join anyone by username"></div>
+      <button class="btn sm" id="frFind">${icon('search')}Find</button>
     </div>
     <div class="hist" id="frList"></div>
     <div class="foot"><span class="s-note" id="frNote" style="margin:0 auto 0 0"></span><button class="btn primary" data-x>Done</button></div>`, (m, close) => {
@@ -2294,8 +2307,10 @@ $('#btnFriends').onclick = () => {
       const k = JSON.stringify(fr) + who;
       if (k === key) return;
       key = k;
-      const mine = fr.userId === who;
-      m.querySelector('#frNote').innerHTML = mine && !fr.loading && !fr.error ? icon('info') + `${fr.rows.length} in game · ${fr.online} online · ${fr.total} friends` : '';
+      const mine = fr.userId === who && (fr.searched || '') === lookup;
+      m.querySelector('#frNote').innerHTML = !mine || fr.loading || fr.error ? ''
+        : lookup ? icon('info') + `Looked up @${esc(lookup)} as ${esc((accById(who) || {}).username || 'this account')}`
+        : icon('info') + `${fr.rows.length} in game · ${fr.online} online · ${fr.total} friends`;
       m.querySelector('#frList').innerHTML = !mine || fr.loading ? '<div class="hist-empty"><span class="spin"></span></div>'
         : fr.error ? `<div class="hist-empty">${esc(fr.error)}</div>`
         : !fr.rows.length ? '<div class="hist-empty">None of this account\'s friends are in a game right now.</div>'
@@ -2305,9 +2320,12 @@ $('#btnFriends').onclick = () => {
             ${f.gameId ? `<button class="btn sm good" data-join="${esc(f.gameId)}" data-place="${f.placeId}">${icon('play')}Join</button>` : '<span class="fr-off" title="This friend doesn\'t let others join their game">Joins off</span>'}</div>`).join('');
     };
     m.querySelector('#frWho').onclick = e => openMenu(e.currentTarget, S.accounts.map(a => ({
-      account: a, label: a.alias || a.username, active: a.id === who, on: () => { who = a.id; load(); render(); }
+      account: a, label: a.alias || a.username, active: a.id === who, on: () => { who = a.id; if (lookup) find(lookup); else load(); render(); }
     })), { width: 300 });
-    m.querySelector('#frReload').onclick = () => { load(); render(); };
+    m.querySelector('#frReload').onclick = () => { if (lookup) find(lookup); else load(); render(); };
+    const userIn = m.querySelector('#frUser');
+    m.querySelector('#frFind').onclick = () => { find(userIn.value); render(); };
+    userIn.addEventListener('keydown', e => { if (e.key === 'Enter') { find(userIn.value); render(); } });
     m.querySelector('#frList').onclick = e => {
       const j = e.target.closest('[data-join]');
       if (!j) return;
