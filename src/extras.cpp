@@ -105,6 +105,19 @@ static fs::path RobloxSettingsFile() {
     return best;
 }
 
+void ForceWindowedStart() {
+    static std::mutex m;
+    std::lock_guard<std::mutex> lk(m);
+    fs::path file = RobloxSettingsFile();
+    std::string xml;
+    if (file.empty() || !ReadFile(file, xml)) return;
+    static const std::string on = "<bool name=\"Fullscreen\">true</bool>", off = "<bool name=\"Fullscreen\">false</bool>";
+    size_t at = xml.find(on);
+    if (at == std::string::npos) return;
+    xml.replace(at, on.size(), off);
+    if (WriteFile(file, xml)) Log("[i] Roblox was set to open fullscreen - switched it back to windowed.");
+}
+
 void ApplyFpsCapFor(long long userId) {
     std::lock_guard<std::mutex> apply(g_fpsApplyMutex);
     int cap = 0, base, last;

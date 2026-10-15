@@ -637,6 +637,7 @@ html[data-anon="on"] .pop .mi .t.anon-t{flex:1}
     <div class="actions">
       <button class="btn toggle" id="btnMulti"><span class="sw"></span>Multi Instance</button>
       <button class="btn" id="btnClient" data-i="monitor" title="Open the Roblox app signed in (selected account, or the top one) without joining a game">Launch Client</button>
+      <button class="btn icon" id="btnRobux" data-i="robux" title="Send Robux (needs Roblox Plus on the sending account)"></button>
       <span class="split"><button class="btn" id="btnArrange" data-i="layout" title="Tile all Roblox windows neatly (right-click to pick a layout)">Arrange <span class="count" id="arrangeCount">0</span></button><button class="btn icon" id="btnArrangeMenu" title="Pick a layout" aria-label="Pick a layout"></button></span>
       <button class="btn danger" id="btnKill" data-i="octagon" title="Close every running Roblox client">Kill All</button>
       <button class="btn primary" id="btnLaunch" data-i="play" title="Launch the selected accounts, in list order">Launch Selected <span class="count" id="launchCount">0</span></button>
@@ -850,6 +851,7 @@ const ICONS = {
   layout: '<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 12h18M12 3v18"/>',
   target: '<circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4"/>',
   play: '<path d="M6 3.5v17l14-8.5z"/>',
+  robux: '<path d="M12 2.5l8.2 4.75v9.5L12 21.5l-8.2-4.75v-9.5z"/><path d="M12 8l3.5 2v4L12 16l-3.5-2v-4z"/>',
   monitor: '<rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/><path d="m10 7.5 4 2.5-4 2.5z"/>',
   octagon: '<path d="M7.86 2h8.28L22 7.86v8.28L16.14 22H7.86L2 16.14V7.86z"/><path d="m15 9-6 6M9 9l6 6"/>',
   gamepad: '<rect x="2" y="6" width="20" height="12" rx="3"/><path d="M6 12h4M8 10v4M15 13h.01M18 11h.01"/>',
@@ -1209,6 +1211,35 @@ function moveTo(id, to) {
   send('move', { id, to });
 }
 
+function robuxModal(fromId) {
+  if (!S || !S.accounts.length) return;
+  let from = fromId != null ? fromId : (orderedSelection()[0] != null ? orderedSelection()[0] : S.accounts[0].id);
+  openModal(`<h3>Send Robux</h3>
+    <p>Needs <b>Roblox Plus</b> on the sending account. This opens the person's Roblox profile signed in as that account, then you pick the amount under <b>⋯ → Send Robux</b> on Roblox's own screen.</p>
+    <div class="label">From</div>
+    <button class="btn" id="rbFrom" style="width:100%;justify-content:flex-start"></button>
+    <div class="label mt">To</div>
+    <div class="field"><span data-i="user"></span><input id="rbTo" maxlength="40" spellcheck="false" placeholder="Username or user ID"></div>
+    <div class="foot"><button class="btn ghost" data-x>Cancel</button><button class="btn primary" data-ok>Open Send Robux</button></div>`, (m, close) => {
+    m.querySelectorAll('[data-i]').forEach(el => el.insertAdjacentHTML('afterbegin', icon(el.dataset.i)));
+    const fromBtn = m.querySelector('#rbFrom');
+    const drawFrom = () => { const a = accById(from); fromBtn.innerHTML = icon('user') + `<span>${esc(a ? (a.alias || a.username) : 'Pick an account')}</span>`; };
+    drawFrom();
+    fromBtn.onclick = e => openMenu(e.currentTarget, S.accounts.map(a => ({ icon: 'user', label: a.alias || a.username, active: a.id === from, on: () => { from = a.id; drawFrom(); } })), { width: 300 });
+    const input = m.querySelector('#rbTo');
+    const go = () => {
+      const to = input.value.trim().replace(/^@/, '');
+      if (!to) { input.focus(); return; }
+      close();
+      send('sendRobux', { from, to });
+    };
+    m.querySelector('[data-ok]').onclick = go;
+    input.addEventListener('keydown', e => { if (e.key === 'Enter') go(); });
+    m.querySelector('[data-x]').onclick = close;
+    setTimeout(() => input.focus(), 0);
+  });
+}
+
 function openRowMenu(anchor, id) {
   const a = accById(id);
   if (!a) return;
@@ -1220,6 +1251,7 @@ function openRowMenu(anchor, id) {
   openMenu(anchor, [
     { icon: 'play', label: 'Launch' + many, on: () => send('launch', { ids }) },
     { icon: 'globe', label: 'Open in browser' + many, on: () => send('browser', { ids }) },
+    { icon: 'robux', label: 'Send Robux', disabled: bulk, on: () => robuxModal(id) },
     { icon: 'star', label: (allPri ? 'Remove priority' : 'Prioritise') + many, on: () => send('priority', { ids, value: !allPri }) },
     { icon: 'top', label: 'Move to top', on: () => moveTo(id, a.priority ? 0 : priCount) },
     { icon: 'bottom', label: 'Move to bottom', on: () => moveTo(id, a.priority ? priCount - 1 : S.accounts.length - 1) },
@@ -1778,6 +1810,7 @@ function updateArrangeButton() {
   b.title = a.windows ? `Tile ${a.windows} Roblox window${a.windows === 1 ? '' : 's'} (${arrangeLabel(a.preset)}). Use the arrow to pick a layout.` : 'No Roblox windows open';
 }
 $('#btnArrange').onclick = () => send('arrange', {});
+$('#btnRobux').onclick = () => robuxModal();
 function openArrangeMenu(anchor) {
   if (!S || !S.arrange) return;
   const gaps = [[0, 'No spacing'], [6, 'Tight spacing'], [14, 'Roomy spacing']];

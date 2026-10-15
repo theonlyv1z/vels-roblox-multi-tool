@@ -1912,6 +1912,7 @@ static void LaunchAccountInternal(int index, long long placeId, const std::strin
     }
 
     ScrubAndLockRobloxCookieFile(("before launch for " + account.username).c_str(), false);
+    ForceWindowedStart();
     ApplyFpsCapFor(account.userId);
 
     std::string ticket = GetAuthTicket(account.cookie);
@@ -2005,6 +2006,49 @@ void LaunchAccountIntoPrivateServer(int index, long long placeId, const std::str
     LaunchAccountInternal(index, placeId, linkCode);
 }
 
+void OpenSendRobux(long long senderId, const std::string& recipientRaw) {
+    RobloxAccount account;
+    bool found = false;
+    {
+        std::lock_guard<std::mutex> lock(accountsMutex);
+        for (const auto& a : accounts) if (a.userId == senderId) { account = a; found = true; break; }
+    }
+    if (!found) { Log("[!] Pick the account to send Robux from."); return; }
+    if (account.cookie.empty()) { Log("[!] " + account.username + " has no saved cookie - re-add it first."); return; }
+
+    std::string name = recipientRaw;
+    while (!name.empty() && (name.front() == ' ' || name.front() == '@')) name.erase(name.begin());
+    while (!name.empty() && name.back() == ' ') name.pop_back();
+    if (name.empty()) { Log("[!] Type who to send Robux to."); return; }
+
+    long long targetId = 0;
+    std::string targetName = name;
+    bool numeric = std::all_of(name.begin(), name.end(), [](char c) { return c >= '0' && c <= '9'; });
+    if (numeric && name.size() < 19) {
+        targetId = std::stoll(name);
+    } else {
+        HttpResponse r = HttpRequest(L"users.roblox.com", L"/v1/usernames/users", L"POST", "",
+            { { L"Content-Type", L"application/json" } },
+            "{\"usernames\":[" + json::Quote(name) + "],\"excludeBannedUsers\":true}");
+        json::Value root;
+        if (r.ok && r.status == 200 && json::Parse(r.body, root) && !root["data"].a.empty()) {
+            targetId = root["data"].a[0]["id"].i64();
+            std::string n = root["data"].a[0]["name"].str();
+            if (!n.empty()) targetName = n;
+        } else if (!r.ok || r.status != 200) {
+            Log("[!] Could not look up that username (HTTP " + std::to_string(r.status) + ").");
+            return;
+        }
+    }
+    if (targetId <= 0) { Log("[!] There's no Roblox user called " + name + "."); return; }
+    if (targetId == account.userId) { Log("[!] That's the same account - pick someone else to send to."); return; }
+
+    login::OpenAccountWebSession(g_exeDir, account.cookie, account.userId, account.username,
+        "https://www.roblox.com/users/" + std::to_string(targetId) + "/profile");
+    Log("[v] Opened " + targetName + "'s profile as " + account.username + ". Click the ... menu, then Send Robux, to pick the amount.");
+    AddActivity("Send Robux", account.username + " -> " + targetName);
+}
+
 void OpenAccountWeb(int index) {
     RobloxAccount account;
     {
@@ -2052,6 +2096,7 @@ void LaunchAccountClient(int index) {
     }
 
     ScrubAndLockRobloxCookieFile(("before client launch for " + account.username).c_str(), false);
+    ForceWindowedStart();
     ApplyFpsCapFor(account.userId);
 
     std::string ticket = GetAuthTicket(account.cookie);

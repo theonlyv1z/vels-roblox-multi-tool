@@ -333,7 +333,7 @@ static std::string JsonEscape(const std::string& s) {
 }
 
 void OpenAccountWebSession(const std::wstring& exeDir, const std::string& cookie,
-    long long userId, const std::string& username) {
+    long long userId, const std::string& username, const std::string& startUrl) {
 
     if (cookie.empty()) {
         backend::Log("[!] This account has no saved cookie to open the web with.");
@@ -416,7 +416,8 @@ void OpenAccountWebSession(const std::wstring& exeDir, const std::string& cookie
         std::string("{\"name\":\".ROBLOSECURITY\",\"value\":\"") + JsonEscape(cookie) +
         "\",\"domain\":\".roblox.com\",\"path\":\"/\",\"secure\":true,\"httpOnly\":true}";
     bool cookieOk = sendCmd("Network.setCookie", cookieParams);
-    sendCmd("Page.navigate", "{\"url\":\"https://www.roblox.com/home\"}");
+    std::string target = startUrl.empty() ? std::string("https://www.roblox.com/home") : startUrl;
+    sendCmd("Page.navigate", "{\"url\":\"" + JsonEscape(target) + "\"}");
 
     WinHttpCloseHandle(hWebSocket);
     WinHttpCloseHandle(hConnect);

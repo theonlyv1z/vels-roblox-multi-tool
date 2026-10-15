@@ -864,6 +864,11 @@ static void HandlePageMessage(const std::string& text) {
                 }
             }).detach();
         }
+    } else if (cmd == "sendRobux") {
+        long long from = m["from"].i64();
+        std::string to = m["to"].str();
+        if (!login::ChromeInstalled()) PostToPage("{\"type\":\"needChrome\",\"what\":\"web\"}");
+        else std::thread([from, to]() { backend::OpenSendRobux(from, to); }).detach();
     } else if (cmd == "browser") {
         std::vector<long long> ids = OrderedIds(m["ids"]);
         if (!login::ChromeInstalled()) PostToPage("{\"type\":\"needChrome\",\"what\":\"web\"}");
