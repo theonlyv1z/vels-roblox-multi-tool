@@ -592,6 +592,9 @@ html[data-density="compact"] .thead{height:28px}
 .fr-sg-t span{font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .fr-sg-tag{flex:none;height:18px;padding:0 7px;border-radius:9px;font-size:10px;font-weight:800;display:inline-flex;align-items:center;background:#0f1c16;border:1px solid #1f5a3f;color:var(--green)}
 .fr-sg-tag.rec{background:#1f2127;border-color:var(--line2);color:var(--muted)}
+.rb-recent{margin:8px 0 0}
+.rb-to-wrap{position:relative}
+.rb-sugg{right:0}
 .fr-recent{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin:2px 0 10px}
 .fr-recent:empty{display:none}
 .fr-rh{color:var(--dim);font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;margin-right:2px}
@@ -1361,6 +1364,15 @@ function moveTo(id, to) {
 }
 
 let robuxWait = null, robuxInfoCb = null, robuxLookupCb = null;
+const RB_RECENT = 'vmt.robuxRecipients';
+const rbRecentGet = () => { try { const v = JSON.parse(store.get(RB_RECENT, '[]')); return Array.isArray(v) ? v : []; } catch (_) { return []; } };
+const rbRecentSet = list => store.set(RB_RECENT, JSON.stringify(list.slice(0, 8)));
+function rbRecentAdd(to) {
+  if (!to || !to.name) return;
+  const list = rbRecentGet().filter(r => r.name.toLowerCase() !== to.name.toLowerCase());
+  list.unshift({ name: to.name, display: to.displayName || '', avatar: to.avatar || '', id: to.id || 0 });
+  rbRecentSet(list);
+}
 let sfxCtx = null;
 function playCopySfx() {
   try {
@@ -1408,7 +1420,8 @@ function robuxModal(fromId, preset) {
     <button class="btn rb-from" id="rbFrom"></button>
     <div class="rb-info" id="rbInfo"></div>
     <div class="label mt">To</div>
-    <div class="field rb-to"><span class="rb-to-ic" id="rbToIc">${icon('user')}</span><input id="rbTo" maxlength="40" spellcheck="false" autocomplete="off" placeholder="Username or UserID" value="${esc(preset.to || '')}"><span class="rb-to-hint" id="rbToHint"></span></div>
+    <div class="rb-to-wrap"><div class="field rb-to"><span class="rb-to-ic" id="rbToIc">${icon('user')}</span><input id="rbTo" maxlength="40" spellcheck="false" autocomplete="off" placeholder="Username or UserID" value="${esc(preset.to || '')}"><span class="rb-to-hint" id="rbToHint"></span></div><div class="fr-sugg rb-sugg" id="rbSugg" hidden></div></div>
+    <div class="fr-recent rb-recent" id="rbRecent"></div>
     <div class="label mt">Amount</div>
     <div class="field"><span data-i="robux"></span><input id="rbAmt" inputmode="numeric" maxlength="6" spellcheck="false" placeholder="10 or more" value="${preset.amount || ''}"></div>
     <div class="rb-quick">${[10, 50, 100, 500, 1000].map(v => `<button class="btn sm" data-amt="${v}">${v}</button>`).join('')}</div>
@@ -1440,7 +1453,77 @@ function robuxModal(fromId, preset) {
         send('robuxLookup', { q });
       }, 420);
     };
-    m.querySelector('#rbTo').addEventListener('input', lookup);
+    m.querySelector('#rbTo').addEventListener('input', () => { lookup(); drawRbRecent(); });
+    const rbRecentBox = m.querySelector('#rbRecent');
+    function drawRbRecent() {
+      const list = rbRecentGet(), cur = m.querySelector('#rbTo').value.trim().replace(/^@/, '').toLowerCase();
+      const html = !list.length ? '' : '<span class="fr-rh">Recent</span>' + list.map(r => `<button class="fr-chip${cur && r.name.toLowerCase() === cur ? ' on' : ''}" data-rbr="${esc(r.name)}" title="@${esc(r.name)}">
+          ${r.avatar ? `<img src="${esc(r.avatar)}" alt="" draggable="false">` : `<span class="fr-chip-av">${esc((r.display || r.name).charAt(0).toUpperCase())}</span>`}
+          <span class="anon-t">${esc(r.display || r.name)}</span><i data-rbr-x="${esc(r.name)}" title="Remove">${icon('x')}</i></button>`).join('');
+      if (rbRecentBox.dataset.h !== html) { rbRecentBox.dataset.h = html; rbRecentBox.innerHTML = html; }
+    }
+    rbRecentBox.onclick = e => {
+      const x = e.target.closest('[data-rbr-x]');
+      if (x) { e.stopPropagation(); rbRecentSet(rbRecentGet().filter(r => r.name !== x.dataset.rbrX)); drawRbRecent(); return; }
+      const c = e.target.closest('[data-rbr]');
+      if (!c) return;
+      m.querySelector('#rbTo').value = c.dataset.rbr;
+      lookup(); drawRbRecent();
+      const amt = m.querySelector('#rbAmt'); amt.focus(); amt.select();
+    };
+    drawRbRecent();
+    const toBox = m.querySelector('#rbTo'), rbSugg = m.querySelector('#rbSugg');
+    let sgItems = [], sgIdx = -1, sgTimer = 0, sgQ = '';
+    const sgHide = () => { rbSugg.hidden = true; sgIdx = -1; };
+    const sgDraw = () => {
+      if (!sgItems.length) { sgHide(); return; }
+      rbSugg.innerHTML = sgItems.map((s, i) => `<div class="fr-sg${i === sgIdx ? ' on' : ''}" data-sg="${i}">
+          ${s.avatar ? `<img src="${esc(s.avatar)}" alt="" draggable="false">` : `<span class="fr-sg-av">${esc((s.display || s.name).charAt(0).toUpperCase())}</span>`}
+          <div class="fr-sg-t"><b class="anon-t">${esc(s.display || s.name)}</b><span class="anon-t">@${esc(s.name)}</span></div>
+          ${s.recent ? '<span class="fr-sg-tag rec">Recent</span>' : s.friend ? '<span class="fr-sg-tag">Friend</span>' : ''}</div>`).join('');
+      rbSugg.hidden = false;
+    };
+    const sgPick = i => {
+      const s = sgItems[i];
+      if (!s) return false;
+      toBox.value = s.name;
+      sgHide();
+      lookup(); drawRbRecent();
+      const amt = m.querySelector('#rbAmt'); amt.focus(); amt.select();
+      return true;
+    };
+    const sgLocal = q => rbRecentGet().filter(r => r.name.toLowerCase().startsWith(q) || (r.display || '').toLowerCase().startsWith(q)).slice(0, 3).map(r => ({ name: r.name, display: r.display, avatar: r.avatar, recent: true }));
+    toBox.addEventListener('input', () => {
+      const q = toBox.value.trim().replace(/^@/, '');
+      clearTimeout(sgTimer);
+      if (!q || /^\d+$/.test(q)) { sgItems = []; sgHide(); return; }
+      const lq = q.toLowerCase();
+      sgItems = sgLocal(lq); sgIdx = -1; sgDraw();
+      sgTimer = setTimeout(() => {
+        sgQ = q;
+        frSuggCb = r => {
+          if (r.q !== sgQ || toBox.value.trim().replace(/^@/, '') !== sgQ) return;
+          const local = sgLocal(lq), have = new Set(local.map(x => x.name.toLowerCase()));
+          sgItems = local.concat((r.items || []).filter(x => !have.has(x.name.toLowerCase()))).slice(0, 8);
+          if (sgIdx >= sgItems.length) sgIdx = -1;
+          if (document.activeElement === toBox) sgDraw();
+        };
+        send('userSuggest', { userId: from, q });
+      }, 220);
+    });
+    toBox.addEventListener('blur', () => setTimeout(sgHide, 160));
+    toBox.addEventListener('focus', () => { if (sgItems.length && toBox.value.trim()) sgDraw(); });
+    rbSugg.addEventListener('pointerdown', e => { const it = e.target.closest('[data-sg]'); if (it) { e.preventDefault(); sgPick(+it.dataset.sg); } });
+    toBox.addEventListener('keydown', e => {
+      if (rbSugg.hidden || !sgItems.length) return;
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+        e.preventDefault();
+        sgIdx = (sgIdx + (e.key === 'ArrowDown' ? 1 : -1) + sgItems.length + 1) % (sgItems.length + 1);
+        if (sgIdx === sgItems.length) sgIdx = -1;
+        sgDraw();
+      } else if (e.key === 'Escape') { e.stopImmediatePropagation(); sgHide(); }
+      else if (e.key === 'Enter' && sgIdx >= 0) { e.preventDefault(); e.stopImmediatePropagation(); sgPick(sgIdx); }
+    });
     if (preset.to) lookup();
     const fromBtn = m.querySelector('#rbFrom'), toIn = m.querySelector('#rbTo'), amtIn = m.querySelector('#rbAmt'), err = m.querySelector('#rbErr'), ok = m.querySelector('[data-ok]');
     const infoBox = m.querySelector('#rbInfo');
@@ -1541,6 +1624,7 @@ function robuxConfirm(from, r, amount, typed) {
       robuxWait = res => {
         if (res.ok) {
           delete robuxInfoCache[from];
+          rbRecentAdd(r.to);
           m.innerHTML = `<div class="rb-done"><svg viewBox="0 0 52 52"><circle cx="26" cy="26" r="24"/><path d="M15 27l7.5 7.5L37.5 19"/></svg>
             <b>Sent ${amount.toLocaleString()} Robux</b><span>to ${esc(r.to.displayName || r.to.name)} (@${esc(r.to.name)})</span></div>
             <div class="foot"><button class="btn primary" data-done>Done</button></div>`;
