@@ -2911,7 +2911,7 @@ void FetchWeaoVersions() {
 }
 
 static bool DownloadToFile(const std::string& url, const std::filesystem::path& dest,
-                           const std::function<void(float)>& onProgress = nullptr) {
+                           const std::function<void(float)>& onProgress = nullptr, const wchar_t* extraHeaders = nullptr) {
     std::wstring host, path;
     if (!SplitHttpsUrl(url, host, path)) return false;
 
@@ -2926,7 +2926,7 @@ static bool DownloadToFile(const std::string& url, const std::filesystem::path& 
     if (!hRequest) { WinHttpCloseHandle(hConnect); WinHttpCloseHandle(hSession); return false; }
 
     bool ok = false;
-    if (WinHttpSendRequest(hRequest, WINHTTP_NO_ADDITIONAL_HEADERS, 0, nullptr, 0, 0, 0) &&
+    if (WinHttpSendRequest(hRequest, extraHeaders ? extraHeaders : WINHTTP_NO_ADDITIONAL_HEADERS, extraHeaders ? (DWORD)-1L : 0, nullptr, 0, 0, 0) &&
         WinHttpReceiveResponse(hRequest, nullptr)) {
         DWORD status = 0, size = sizeof(status);
         WinHttpQueryHeaders(hRequest, WINHTTP_QUERY_STATUS_CODE | WINHTTP_QUERY_FLAG_NUMBER,
@@ -3196,6 +3196,7 @@ static std::string g_updateSha;
 static const wchar_t* kUpdateRepoPath = L"/repos/theonlyv1z/vels-roblox-multi-tool/contents?ref=main";
 static const wchar_t* kUpdateCommitsPath = L"/repos/theonlyv1z/vels-roblox-multi-tool/commits?path=VelsMultiTool.exe&per_page=1";
 static const char* kUpdateExeUrl = "https://raw.githubusercontent.com/theonlyv1z/vels-roblox-multi-tool/main/VelsMultiTool.exe";
+static const char* kUpdateBlobUrl = "https://api.github.com/repos/theonlyv1z/vels-roblox-multi-tool/git/blobs/";
 
 static void SetUpdateState(const std::string& status, const std::string& message, float progress = 0.0f) {
     std::lock_guard<std::mutex> lock(updateMutex);
@@ -3297,10 +3298,12 @@ bool InstallUpdate() {
     }
     std::wstring self = SelfExePath();
     std::wstring fresh = self + L".update", old = self + L".old";
-    bool got = DownloadToFile(kUpdateExeUrl, fresh, [](float p) {
+    auto progress = [](float p) {
         std::lock_guard<std::mutex> lock(updateMutex);
         updateState.progress = p;
-    });
+    };
+    bool got = DownloadToFile(std::string(kUpdateBlobUrl) + expected, fresh, progress, L"Accept: application/vnd.github.raw\r\n");
+    if (!got || GitBlobSha(fresh) != expected) got = DownloadToFile(kUpdateExeUrl, fresh, progress);
     std::error_code ec;
     if (!got) { SetUpdateState("error", "The download failed. Check your connection and try again."); return false; }
     if (GitBlobSha(fresh) != expected) {
