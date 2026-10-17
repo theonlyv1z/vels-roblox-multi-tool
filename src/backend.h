@@ -183,6 +183,8 @@ std::string RobuxPrepare(long long fromId, const std::string& recipient);
 std::string RobuxSend(long long fromId, long long toId, long long amount);
 std::string RobuxInfo(long long fromId);
 std::string RobuxLookup(const std::string& query);
+std::string PlaceTag(long long placeId);
+std::string UserSuggest(long long accountId, const std::string& query);
 void ForceWindowedStart();
 
 void FetchAccountStats(int index);
@@ -333,7 +335,7 @@ extern std::mutex serversMutex;
 extern ServerBrowserState serverBrowser;
 void LoadServerBrowser(long long placeId, bool smallestFirst, long long regionUserId);
 
-struct FriendRow { long long id = 0; std::string name; std::string display; std::string game; std::string gameId; std::string avatarUrl; long long placeId = 0; long long rootPlaceId = 0; };
+struct FriendRow { long long id = 0; std::string name; std::string display; std::string game; std::string gameId; std::string avatarUrl; long long placeId = 0; long long rootPlaceId = 0; std::string status; };
 struct FriendsState { long long userId = 0; bool loading = false; std::string error; int total = 0; int online = 0; std::vector<FriendRow> rows; std::string searched; };
 extern std::mutex friendsMutex;
 extern FriendsState friendsState;

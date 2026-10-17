@@ -520,6 +520,10 @@ body.is-selecting,body.is-selecting *{user-select:none!important}
 #toasts{position:fixed;right:20px;bottom:20px;display:flex;flex-direction:column;gap:8px;z-index:70;pointer-events:none;align-items:flex-end}
 .toast{display:flex;align-items:center;gap:9px;max-width:400px;padding:10px 14px 10px 12px;border-radius:11px;background:#17191ef2;border:1px solid var(--line2);box-shadow:0 14px 34px -12px #000;font-weight:550;animation:tin .18s ease-out;transition:opacity .2s,transform .2s}
 .toast .i{width:16px;height:16px}
+.toast .t-gi{position:relative;width:30px;height:30px;flex:none}
+.toast .t-gi img{width:30px;height:30px;border-radius:8px;object-fit:cover;background:#22252b;display:block}
+.toast .t-gi .i{position:absolute;right:-5px;bottom:-5px;width:15px;height:15px;border-radius:50%;background:#17191e;box-shadow:0 0 0 2px #17191e}
+.toast .t-game{font-weight:800;color:var(--text)}
 .toast.ok .i{color:var(--green)}.toast.err .i{color:var(--red)}.toast.info .i{color:var(--blue)}
 .toast.err{border-color:#5a2a2e}
 .toast.out{opacity:0;transform:translateY(6px)}
@@ -577,6 +581,37 @@ html[data-density="compact"] .thead{height:28px}
 .hist-row .av{flex:none}
 .fr-un{color:var(--muted);font-weight:500;font-size:11.5px}
 .fr-off{color:var(--dim);font-size:11.5px;padding:0 6px}
+.fr-search{position:relative}
+.fr-sugg{position:absolute;left:0;right:78px;top:calc(100% + 5px);z-index:6;display:flex;flex-direction:column;gap:2px;padding:5px;border-radius:11px;border:1px solid var(--line2);background:var(--panel);box-shadow:0 20px 44px -16px #000;max-height:280px;overflow-y:auto;animation:fade .14s}
+.fr-sugg[hidden]{display:none}
+.fr-sg{display:flex;align-items:center;gap:10px;padding:6px 8px;border-radius:8px;cursor:pointer;transition:background .1s}
+.fr-sg:hover,.fr-sg.on{background:var(--hover)}
+.fr-sg img,.fr-sg-av{width:28px;height:28px;border-radius:50%;object-fit:cover;background:#22252b;flex:none;display:grid;place-items:center;font-size:11px;font-weight:800;color:var(--muted)}
+.fr-sg-t{min-width:0;flex:1;display:flex;flex-direction:column;line-height:1.25}
+.fr-sg-t b{font-size:12.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.fr-sg-t span{font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.fr-sg-tag{flex:none;height:18px;padding:0 7px;border-radius:9px;font-size:10px;font-weight:800;display:inline-flex;align-items:center;background:#0f1c16;border:1px solid #1f5a3f;color:var(--green)}
+.fr-sg-tag.rec{background:#1f2127;border-color:var(--line2);color:var(--muted)}
+.fr-recent{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin:2px 0 10px}
+.fr-recent:empty{display:none}
+.fr-rh{color:var(--dim);font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;margin-right:2px}
+.fr-chip{display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 6px 0 4px;border-radius:14px;border:1px solid var(--line2);background:var(--bg2);color:var(--soft);font:inherit;font-size:12px;font-weight:700;cursor:pointer;transition:border-color .15s,background .15s,transform .12s;animation:fade .2s}
+.fr-chip:hover{border-color:#3a3e47;background:var(--hover)}
+.fr-chip:active{transform:scale(.96)}
+.fr-chip.on{border-color:var(--silver1)}
+.fr-chip img,.fr-chip-av{width:20px;height:20px;border-radius:50%;object-fit:cover;background:#22252b;display:grid;place-items:center;font-size:9px;color:var(--muted);flex:none}
+.fr-chip span.anon-t{max-width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.fr-chip i{display:grid;place-items:center;width:16px;height:16px;border-radius:50%;color:var(--dim);opacity:0;transition:opacity .12s,background .12s}
+.fr-chip:hover i{opacity:1}
+.fr-chip i:hover{background:#2a2d34;color:var(--text)}
+.fr-chip i .i{width:10px;height:10px}
+.fr-who{gap:9px}
+.fr-who-av{display:contents}
+.fr-who .mi-av{width:22px;height:22px;border-radius:50%;flex:none;display:grid;place-items:center;object-fit:cover;background:#22252b;font-size:10px;font-weight:800;color:var(--muted)}
+.fr-status{display:inline-flex;align-items:center;gap:6px;height:24px;padding:0 10px;border-radius:12px;font-size:11.5px;font-weight:700;border:1px solid var(--line2);background:var(--bg2);color:var(--muted);white-space:nowrap}
+.fr-status i{width:7px;height:7px;border-radius:50%;background:#6b7079}
+.fr-status.on{color:#5ab4ff;border-color:#1e3d5c;background:#0f1822}
+.fr-status.on i{background:#5ab4ff;box-shadow:0 0 0 3px rgba(90,180,255,.15)}
 .pt-ic{flex:none;width:46px;height:46px;border-radius:10px;background:var(--panel2);object-fit:cover;display:grid;place-items:center;color:var(--dim)}
 .pt-ic .i{width:18px;height:18px}
 .pt-sum{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-bottom:10px}
@@ -1934,7 +1969,13 @@ function toast(kind, text) {
   const t = document.createElement('div');
   t.className = 'toast ' + kind;
   t._text = text;
-  t.innerHTML = icon(kind === 'ok' ? 'ok' : kind === 'err' ? 'alert' : 'info') + `<span>${esc(text)}</span>`;
+  let gameIcon = '';
+  const body = esc(text).replace(/\{\{place:(\d+)\|([^|]*)\|([^}]*)\}\}/g, (all, id, name, ic) => {
+    if (ic && !gameIcon) gameIcon = ic;
+    return `<b class="t-game">${name || id}</b>`;
+  });
+  const kindIcon = icon(kind === 'ok' ? 'ok' : kind === 'err' ? 'alert' : 'info');
+  t.innerHTML = gameIcon ? `<span class="t-gi"><img src="${gameIcon}" alt="" draggable="false">${kindIcon}</span><span>${body}</span>` : kindIcon + `<span>${body}</span>`;
   box.appendChild(t);
   while (box.children.length > 4) box.firstElementChild.remove();
   setTimeout(() => { t.classList.add('out'); setTimeout(() => t.remove(), 220); }, kind === 'err' ? 3000 : 1800);
@@ -2277,7 +2318,16 @@ $('#btnServers').onclick = () => {
   }, 'wide');
 };
 
-let friendsRefresh = null;
+let friendsRefresh = null, frSuggCb = null;
+const FR_RECENT = 'vmt.friendLookups';
+const frRecentGet = () => { try { const v = JSON.parse(store.get(FR_RECENT, '[]')); return Array.isArray(v) ? v : []; } catch (_) { return []; } };
+const frRecentSet = list => store.set(FR_RECENT, JSON.stringify(list.slice(0, 8)));
+function frRecentAdd(row) {
+  if (!row || !row.name) return;
+  const list = frRecentGet().filter(r => r.name.toLowerCase() !== row.name.toLowerCase());
+  list.unshift({ name: row.name, display: row.display || '', avatar: row.avatar || '', id: row.id || 0 });
+  frRecentSet(list);
+}
 $('#btnFriends').onclick = () => {
   if (!S || !S.accounts.length) { toast('info', 'Add an account first.'); return; }
   let who = (orderedSelection()[0]) || S.accounts[0].id, key = '', lookup = '';
@@ -2292,22 +2342,28 @@ $('#btnFriends').onclick = () => {
   openModal(`<h3>Friends in game</h3>
     <p>Friends of the chosen account who are playing right now. Join sends the selected accounts, or that account, into the same server.</p>
     <div class="sv-bar">
-      <button class="adapter" id="frWho" style="flex:1"><span id="frWhoLbl" class="anon-t"></span><span class="chev">${icon('chevron')}</span></button>
+      <button class="adapter fr-who" id="frWho" style="flex:1"><span class="fr-who-av" id="frWhoAv"></span><span id="frWhoLbl" class="anon-t"></span><span class="chev">${icon('chevron')}</span></button>
       <button class="btn icon sm" id="frReload" title="Refresh">${icon('refresh')}</button>
     </div>
-    <div class="sv-bar">
+    <div class="sv-bar fr-search">
       <div class="field" style="flex:1"><span>${icon('search')}</span><input id="frUser" maxlength="21" spellcheck="false" autocomplete="off" placeholder="Join anyone by username"></div>
       <button class="btn sm" id="frFind">${icon('search')}Find</button>
+      <div class="fr-sugg" id="frSugg" hidden></div>
     </div>
+    <div class="fr-recent" id="frRecent"></div>
     <div class="hist" id="frList"></div>
     <div class="foot"><span class="s-note" id="frNote" style="margin:0 auto 0 0"></span><button class="btn primary" data-x>Done</button></div>`, (m, close) => {
     const render = () => {
       const fr = (S && S.friends) || { rows: [] }, acc = accById(who);
       m.querySelector('#frWhoLbl').textContent = acc ? (acc.alias || acc.username) : 'Pick an account';
+      const avKey = acc ? acc.id + ':' + !!acc.avatar : '';
+      const avBox = m.querySelector('#frWhoAv');
+      if (avBox.dataset.k !== avKey) { avBox.dataset.k = avKey; avBox.innerHTML = acc ? accAvatar(acc) : ''; }
       const k = JSON.stringify(fr) + who;
       if (k === key) return;
       key = k;
       const mine = fr.userId === who && (fr.searched || '') === lookup;
+      if (mine && lookup && !fr.loading && !fr.error && fr.rows.length) { frRecentAdd(fr.rows[0]); drawRecent(); }
       m.querySelector('#frNote').innerHTML = !mine || fr.loading || fr.error ? ''
         : lookup ? icon('info') + `Looked up @${esc(lookup)} as ${esc((accById(who) || {}).username || 'this account')}`
         : icon('info') + `${fr.rows.length} in game · ${fr.online} online · ${fr.total} friends`;
@@ -2317,15 +2373,82 @@ $('#btnFriends').onclick = () => {
         : fr.rows.map(f => `<div class="hist-row">
             ${f.avatar ? `<img class="av" src="${esc(f.avatar)}" alt="" draggable="false">` : `<div class="av">${esc((f.display || f.name).charAt(0).toUpperCase())}</div>`}
             <div class="txt"><b>${esc(f.display || f.name)}${f.display && f.display !== f.name ? ` <span class="fr-un">@${esc(f.name)}</span>` : ''}</b><span>${esc(f.game || 'In a game')}</span></div>
-            ${f.gameId ? `<button class="btn sm good" data-join="${esc(f.gameId)}" data-place="${f.placeId}">${icon('play')}Join</button>` : '<span class="fr-off" title="This friend doesn\'t let others join their game">Joins off</span>'}</div>`).join('');
+            ${f.gameId ? `<button class="btn sm good" data-join="${esc(f.gameId)}" data-place="${f.placeId}">${icon('play')}Join</button>`
+              : f.status ? `<span class="fr-status ${f.status === 'Offline' ? 'off' : 'on'}"><i></i>${esc(f.status)}</span>`
+              : '<span class="fr-off" title="This friend doesn\'t let others join their game">Joins off</span>'}</div>`).join('');
     };
     m.querySelector('#frWho').onclick = e => openMenu(e.currentTarget, S.accounts.map(a => ({
       account: a, label: a.alias || a.username, active: a.id === who, on: () => { who = a.id; if (lookup) find(lookup); else load(); render(); }
     })), { width: 300 });
     m.querySelector('#frReload').onclick = () => { if (lookup) find(lookup); else load(); render(); };
+    const recentBox = m.querySelector('#frRecent');
+    function drawRecent() {
+      const list = frRecentGet();
+      const html = !list.length ? '' : `<span class="fr-rh">Recent</span>` + list.map(r => `<button class="fr-chip${lookup && r.name.toLowerCase() === lookup.toLowerCase() ? ' on' : ''}" data-recent="${esc(r.name)}" title="@${esc(r.name)}">
+          ${r.avatar ? `<img src="${esc(r.avatar)}" alt="" draggable="false">` : `<span class="fr-chip-av">${esc((r.display || r.name).charAt(0).toUpperCase())}</span>`}
+          <span class="anon-t">${esc(r.display || r.name)}</span><i data-unrecent="${esc(r.name)}" title="Remove">${icon('x')}</i></button>`).join('');
+      if (recentBox.dataset.h !== html) { recentBox.dataset.h = html; recentBox.innerHTML = html; }
+    }
+    recentBox.onclick = e => {
+      const x = e.target.closest('[data-unrecent]');
+      if (x) { e.stopPropagation(); frRecentSet(frRecentGet().filter(r => r.name !== x.dataset.unrecent)); drawRecent(); return; }
+      const c = e.target.closest('[data-recent]');
+      if (c) { userIn.value = c.dataset.recent; find(c.dataset.recent); render(); drawRecent(); }
+    };
     const userIn = m.querySelector('#frUser');
-    m.querySelector('#frFind').onclick = () => { find(userIn.value); render(); };
-    userIn.addEventListener('keydown', e => { if (e.key === 'Enter') { find(userIn.value); render(); } });
+    m.querySelector('#frFind').onclick = () => { hideSugg(); find(userIn.value); render(); drawRecent(); };
+    const sugg = m.querySelector('#frSugg');
+    let suggItems = [], suggIdx = -1, suggTimer = 0, suggQ = '';
+    const hideSugg = () => { sugg.hidden = true; suggIdx = -1; };
+    const drawSugg = () => {
+      if (!suggItems.length) { hideSugg(); return; }
+      sugg.innerHTML = suggItems.map((s, i) => `<div class="fr-sg${i === suggIdx ? ' on' : ''}" data-sg="${i}">
+          ${s.avatar ? `<img src="${esc(s.avatar)}" alt="" draggable="false">` : `<span class="fr-sg-av">${esc((s.display || s.name).charAt(0).toUpperCase())}</span>`}
+          <div class="fr-sg-t"><b class="anon-t">${esc(s.display || s.name)}</b><span class="anon-t">@${esc(s.name)}</span></div>
+          ${s.friend ? '<span class="fr-sg-tag">Friend</span>' : s.recent ? '<span class="fr-sg-tag rec">Recent</span>' : ''}</div>`).join('');
+      sugg.hidden = false;
+    };
+    const pickSugg = i => {
+      const s = suggItems[i];
+      if (!s) return false;
+      userIn.value = s.name;
+      hideSugg();
+      find(s.name); render(); drawRecent();
+      return true;
+    };
+    const localRecent = q => frRecentGet().filter(r => r.name.toLowerCase().startsWith(q) || (r.display || '').toLowerCase().startsWith(q)).slice(0, 3).map(r => ({ ...r, recent: true }));
+    userIn.addEventListener('input', () => {
+      const q = userIn.value.trim().replace(/^@/, '');
+      clearTimeout(suggTimer);
+      if (!q) { suggItems = []; hideSugg(); return; }
+      const lq = q.toLowerCase();
+      suggItems = localRecent(lq); suggIdx = -1; drawSugg();
+      suggTimer = setTimeout(() => {
+        suggQ = q;
+        frSuggCb = r => {
+          if (r.q !== suggQ || userIn.value.trim().replace(/^@/, '') !== suggQ) return;
+          const have = new Set((r.items || []).map(x => x.name.toLowerCase()));
+          suggItems = (r.items || []).concat(localRecent(lq).filter(x => !have.has(x.name.toLowerCase()))).slice(0, 8);
+          if (suggIdx >= suggItems.length) suggIdx = -1;
+          if (document.activeElement === userIn) drawSugg();
+        };
+        send('userSuggest', { userId: who, q });
+      }, 220);
+    });
+    userIn.addEventListener('blur', () => setTimeout(hideSugg, 160));
+    userIn.addEventListener('focus', () => { if (suggItems.length && userIn.value.trim()) drawSugg(); });
+    sugg.addEventListener('pointerdown', e => { const it = e.target.closest('[data-sg]'); if (it) { e.preventDefault(); pickSugg(+it.dataset.sg); } });
+    userIn.addEventListener('keydown', e => {
+      if (!sugg.hidden && suggItems.length && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) {
+        e.preventDefault();
+        suggIdx = (suggIdx + (e.key === 'ArrowDown' ? 1 : -1) + suggItems.length + 1) % (suggItems.length + 1);
+        if (suggIdx === suggItems.length) suggIdx = -1;
+        drawSugg();
+        return;
+      }
+      if (e.key === 'Escape' && !sugg.hidden) { e.stopPropagation(); hideSugg(); return; }
+      if (e.key === 'Enter') { if (suggIdx >= 0 && pickSugg(suggIdx)) return; hideSugg(); find(userIn.value); render(); drawRecent(); }
+    });
     m.querySelector('#frList').onclick = e => {
       const j = e.target.closest('[data-join]');
       if (!j) return;
@@ -2338,6 +2461,7 @@ $('#btnFriends').onclick = () => {
     friendsRefresh = render;
     load();
     render();
+    drawRecent();
   }, 'wide');
 };
 
@@ -3010,6 +3134,7 @@ if (!DEMO) {
     else if (m.type === 'robuxPrep' || m.type === 'robuxSent') { const f = robuxWait; robuxWait = null; if (f) f(m); }
     else if (m.type === 'robuxInfo') { if (robuxInfoCb) robuxInfoCb(m); }
     else if (m.type === 'robuxLookup') { if (robuxLookupCb) robuxLookupCb(m); }
+    else if (m.type === 'userSuggest') { if (frSuggCb) frSuggCb(m); }
     else if (m.type === 'needChrome') { $('#loginWait').classList.remove('show'); chromeModal(m.what); }
     else if (m.type === 'relaunch') {
       if (m.stage === 'pending') showHandoff('Waiting for administrator approval', 'Accept the Windows prompt to continue.');

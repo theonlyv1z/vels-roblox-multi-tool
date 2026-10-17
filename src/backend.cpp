@@ -1970,7 +1970,7 @@ static void LaunchAccountInternal(int index, long long placeId, const std::strin
         std::thread(AssignLaunchedPid, account.userId, pidsBefore).detach();
         if (!gameId.empty()) SaveLastServer(placeId, gameId);
         OnAccountLaunched(account.userId, placeId, gameId, linkCode);
-        Log("[v] Launched " + account.username + " into " + std::to_string(placeId) +
+        Log("[v] Launched " + account.username + " into " + PlaceTag(placeId) +
             (linkCode.empty() ? (gameId.empty() ? "." : " (chosen server).") : " (private server)."));
         AddActivity(linkCode.empty() ? "Launched Roblox" : "Launched into private server", account.username);
         SchedulePostLaunchCookieScrub(account.username);
@@ -1990,7 +1990,7 @@ static void LaunchAccountInternal(int index, long long placeId, const std::strin
     std::thread(AssignLaunchedPid, account.userId, pidsBefore).detach();
     if (!gameId.empty()) SaveLastServer(placeId, gameId);
     OnAccountLaunched(account.userId, placeId, gameId, linkCode);
-    Log("[v] Launched " + account.username + " into " + std::to_string(placeId) +
+    Log("[v] Launched " + account.username + " into " + PlaceTag(placeId) +
         (linkCode.empty() ? (gameId.empty() ? "." : " (chosen server).") : " (private server)."));
     AddActivity(linkCode.empty() ? "Launched Roblox" : "Launched into private server", account.username);
     SchedulePostLaunchCookieScrub(account.username);
@@ -3615,6 +3615,12 @@ void LookupUser(long long accountId, const std::string& rawName) {
     row.name = u["name"].str();
     row.display = u["displayName"].str();
 
+    HttpResponse tr = HttpRequest(L"thumbnails.roblox.com",
+        L"/v1/users/avatar-headshot?userIds=" + std::to_wstring(row.id) + L"&size=48x48&format=Png&isCircular=false", L"GET", "", {}, "");
+    json::Value thumbs;
+    if (tr.ok && tr.status == 200 && json::Parse(tr.body, thumbs) && !thumbs["data"].a.empty())
+        row.avatarUrl = thumbs["data"].a[0]["imageUrl"].str();
+
     HttpResponse pr = PostJsonAs(L"presence.roblox.com", L"/v1/presence/users", cookie,
         "{\"userIds\":[" + std::to_string(row.id) + "]}");
     json::Value pres;
@@ -3625,19 +3631,17 @@ void LookupUser(long long accountId, const std::string& rawName) {
 
     const json::Value& p = pres["userPresences"].a[0];
     long long type = p["userPresenceType"].i64();
-    if (type == 0) { finish("@" + row.name + " is offline.", {}); return; }
-    if (type != 2) { finish("@" + row.name + " is online but not in a game.", {}); return; }
+    if (type != 2) {
+        row.status = type == 0 ? "Offline" : type == 3 ? "In Studio" : "Online";
+        row.game = type == 0 ? "Offline right now" : type == 3 ? "Building in Roblox Studio" : "Online, but not in a game";
+        finish("", { row });
+        return;
+    }
 
     row.game = p["lastLocation"].str();
     row.gameId = p["gameId"].str();
     row.placeId = p["placeId"].i64();
     row.rootPlaceId = p["rootPlaceId"].i64();
-
-    HttpResponse tr = HttpRequest(L"thumbnails.roblox.com",
-        L"/v1/users/avatar-headshot?userIds=" + std::to_wstring(row.id) + L"&size=48x48&format=Png&isCircular=false", L"GET", "", {}, "");
-    json::Value thumbs;
-    if (tr.ok && tr.status == 200 && json::Parse(tr.body, thumbs) && !thumbs["data"].a.empty())
-        row.avatarUrl = thumbs["data"].a[0]["imageUrl"].str();
 
     finish("", { row });
 }
@@ -4022,6 +4026,145 @@ void StartOwnedPsWatcher() {
             lastScan = std::chrono::steady_clock::now();
         }
     }).detach();
+}
+
+struct PlaceMetaInfo { std::string name, icon; bool ok = false; };
+static std::mutex g_placeMetaMutex;
+static std::map<long long, PlaceMetaInfo> g_placeMeta;
+
+static PlaceMetaInfo PlaceMetaFor(long long placeId) {
+    {
+        std::lock_guard<std::mutex> lk(g_placeMetaMutex);
+        auto it = g_placeMeta.find(placeId);
+        if (it != g_placeMeta.end()) return it->second;
+    }
+    PlaceMetaInfo info;
+    long long universe = 0;
+    HttpResponse u = HttpRequest(L"apis.roblox.com", L"/universes/v1/places/" + std::to_wstring(placeId) + L"/universe", L"GET", "", {}, "");
+    json::Value uj;
+    if (u.ok && u.status == 200 && json::Parse(u.body, uj)) universe = uj["universeId"].i64();
+    if (universe > 0) {
+        HttpResponse g = HttpRequest(L"games.roblox.com", L"/v1/games?universeIds=" + std::to_wstring(universe), L"GET", "", {}, "");
+        json::Value gj;
+        if (g.ok && g.status == 200 && json::Parse(g.body, gj) && !gj["data"].a.empty()) info.name = gj["data"].a[0]["name"].str();
+        HttpResponse t = HttpRequest(L"thumbnails.roblox.com",
+            L"/v1/games/icons?universeIds=" + std::to_wstring(universe) + L"&returnPolicy=PlaceHolder&size=50x50&format=Png&isCircular=false", L"GET", "", {}, "");
+        json::Value tj;
+        if (t.ok && t.status == 200 && json::Parse(t.body, tj) && !tj["data"].a.empty()) info.icon = tj["data"].a[0]["imageUrl"].str();
+    }
+    info.ok = !info.name.empty();
+    std::lock_guard<std::mutex> lk(g_placeMetaMutex);
+    g_placeMeta[placeId] = info;
+    return info;
+}
+
+std::string PlaceTag(long long placeId) {
+    PlaceMetaInfo m = PlaceMetaFor(placeId);
+    if (!m.ok) return std::to_string(placeId);
+    std::string name;
+    for (char c : m.name) name += (c == '|' || c == '}' || c == '{') ? ' ' : c;
+    std::string icon;
+    for (char c : m.icon) if (c != '|' && c != '}' && c != '{') icon += c;
+    return "{{place:" + std::to_string(placeId) + "|" + name + "|" + icon + "}}";
+}
+
+struct FriendName { long long id = 0; std::string name, display; };
+static std::mutex g_friendNamesMutex;
+static std::map<long long, std::pair<std::chrono::steady_clock::time_point, std::vector<FriendName>>> g_friendNames;
+
+static std::vector<FriendName> FriendNamesFor(const RobloxAccount& a) {
+    {
+        std::lock_guard<std::mutex> lk(g_friendNamesMutex);
+        auto it = g_friendNames.find(a.userId);
+        if (it != g_friendNames.end() && std::chrono::steady_clock::now() - it->second.first < std::chrono::minutes(10)) return it->second.second;
+    }
+    std::vector<FriendName> out;
+    HttpResponse r = HttpRequest(L"friends.roblox.com", L"/v1/users/" + std::to_wstring(a.userId) + L"/friends", L"GET", a.cookie, {}, "");
+    json::Value root;
+    if (r.ok && r.status == 200 && json::Parse(r.body, root)) {
+        for (const auto& f : root["data"].a) {
+            FriendName n;
+            n.id = f["id"].i64();
+            n.name = f["name"].str();
+            n.display = f["displayName"].str();
+            if (n.id > 0) out.push_back(n);
+        }
+    }
+    std::vector<size_t> missing;
+    for (size_t i = 0; i < out.size(); ++i) if (out[i].name.empty()) missing.push_back(i);
+    for (size_t start = 0; start < missing.size(); start += 100) {
+        std::string ids;
+        for (size_t k = start; k < missing.size() && k < start + 100; ++k) ids += (ids.empty() ? "" : ",") + std::to_string(out[missing[k]].id);
+        HttpResponse u = PostJsonAs(L"users.roblox.com", L"/v1/users", a.cookie, "{\"userIds\":[" + ids + "],\"excludeBannedUsers\":false}");
+        json::Value uj;
+        if (!u.ok || u.status != 200 || !json::Parse(u.body, uj)) break;
+        std::map<long long, std::pair<std::string, std::string>> names;
+        for (const auto& x : uj["data"].a) names[x["id"].i64()] = { x["name"].str(), x["displayName"].str() };
+        for (size_t k = start; k < missing.size() && k < start + 100; ++k) {
+            auto it = names.find(out[missing[k]].id);
+            if (it != names.end()) { out[missing[k]].name = it->second.first; out[missing[k]].display = it->second.second; }
+        }
+    }
+    std::lock_guard<std::mutex> lk(g_friendNamesMutex);
+    g_friendNames[a.userId] = { std::chrono::steady_clock::now(), out };
+    return out;
+}
+
+static std::string LowerAscii(std::string s) {
+    for (char& c : s) c = (char)std::tolower((unsigned char)c);
+    return s;
+}
+
+std::string UserSuggest(long long accountId, const std::string& raw) {
+    std::string q;
+    for (char c : raw) if (std::isalnum((unsigned char)c) || c == '_') q += c;
+    std::string head = "{\"type\":\"userSuggest\",\"q\":" + json::Quote(raw) + ",\"items\":[";
+    if (q.empty()) return head + "]}";
+    std::string lq = LowerAscii(q);
+    struct Item { long long id; std::string name, display; bool friendOf; int rank; };
+    std::vector<Item> items;
+    std::set<long long> seen;
+    RobloxAccount a;
+    if (AccountById(accountId, a) && !a.cookie.empty()) {
+        for (const auto& f : FriendNamesFor(a)) {
+            std::string ln = LowerAscii(f.name), ld = LowerAscii(f.display);
+            int rank = ln.rfind(lq, 0) == 0 ? 0 : ld.rfind(lq, 0) == 0 ? 1 : (ln.find(lq) != std::string::npos || ld.find(lq) != std::string::npos) ? 2 : -1;
+            if (rank < 0) continue;
+            items.push_back({ f.id, f.name, f.display, true, rank });
+        }
+        std::stable_sort(items.begin(), items.end(), [](const Item& x, const Item& y) { return x.rank < y.rank; });
+        if (items.size() > 6) items.resize(6);
+        for (const auto& it : items) seen.insert(it.id);
+    }
+    if (q.size() >= 3 && items.size() < 8) {
+        HttpResponse s = HttpRequest(L"users.roblox.com", L"/v1/users/search?limit=10&keyword=" + Widen(q), L"GET", "", {}, "");
+        json::Value sj;
+        if (s.ok && s.status == 200 && json::Parse(s.body, sj)) {
+            for (const auto& x : sj["data"].a) {
+                long long id = x["id"].i64();
+                if (id <= 0 || seen.count(id) || items.size() >= 8) continue;
+                seen.insert(id);
+                items.push_back({ id, x["name"].str(), x["displayName"].str(), false, 3 });
+            }
+        }
+    }
+    std::map<long long, std::string> avatars;
+    if (!items.empty()) {
+        std::wstring ids;
+        for (const auto& it : items) ids += (ids.empty() ? L"" : L",") + std::to_wstring(it.id);
+        HttpResponse t = HttpRequest(L"thumbnails.roblox.com", L"/v1/users/avatar-headshot?userIds=" + ids + L"&size=48x48&format=Png&isCircular=false", L"GET", "", {}, "");
+        json::Value tj;
+        if (t.ok && t.status == 200 && json::Parse(t.body, tj))
+            for (const auto& x : tj["data"].a) avatars[x["targetId"].i64()] = x["imageUrl"].str();
+    }
+    std::string o = head;
+    for (size_t i = 0; i < items.size(); ++i) {
+        const auto& it = items[i];
+        o += std::string(i ? "," : "") + "{\"id\":" + std::to_string(it.id) + ",\"name\":" + json::Quote(it.name) +
+             ",\"display\":" + json::Quote(it.display) + ",\"avatar\":" + json::Quote(avatars[it.id]) +
+             ",\"friend\":" + (it.friendOf ? "true" : "false") + "}";
+    }
+    return o + "]}";
 }
 
 }

@@ -520,7 +520,7 @@ static std::string BuildStateJson() {
             const auto& r = fs.rows[i];
             o += std::string(i ? "," : "") + "{\"id\":" + N(r.id) + ",\"name\":" + Quote(r.name) + ",\"display\":" + Quote(r.display) +
                  ",\"game\":" + Quote(r.game) + ",\"gameId\":" + Quote(r.gameId) + ",\"placeId\":" + N(r.placeId) +
-                 ",\"avatar\":" + Quote(r.avatarUrl) + "}";
+                 ",\"avatar\":" + Quote(r.avatarUrl) + ",\"status\":" + Quote(r.status) + "}";
         }
         o += "]}";
     }
@@ -868,9 +868,9 @@ static void HandlePageMessage(const std::string& text) {
         if (placeId <= 0 || !validId) backend::Log("[!] Join Server needs a Place ID and a valid server ID.");
         else if (ids.empty()) backend::Log("[!] Select at least one account to join with.");
         else {
-            backend::Log("[+] Joining server " + gameId.substr(0, 8) + "... in place " + std::to_string(placeId) +
-                         " with " + std::to_string(ids.size()) + " account" + (ids.size() == 1 ? "." : "s."));
             std::thread([ids, placeId, gameId]() {
+                backend::Log("[+] Joining " + backend::PlaceTag(placeId) + " with " + std::to_string(ids.size()) +
+                             " account" + (ids.size() == 1 ? "." : "s."));
                 for (size_t k = 0; k < ids.size(); ++k) {
                     int idx = IndexOfUser(ids[k]);
                     if (idx < 0) continue;
@@ -908,6 +908,10 @@ static void HandlePageMessage(const std::string& text) {
         if (text.empty()) return;
         if (CopyToClipboard(text)) backend::Log("[v] Copied the " + (what.empty() ? std::string("text") : what) + ".");
         else backend::Log("[!] Could not access the clipboard.");
+    } else if (cmd == "userSuggest") {
+        long long account = m["userId"].i64();
+        std::string q = m["q"].str();
+        std::thread([account, q]() { QueuePageMessage(backend::UserSuggest(account, q)); }).detach();
     } else if (cmd == "robuxLookup") {
         std::string q = m["q"].str();
         std::thread([q]() { QueuePageMessage(backend::RobuxLookup(q)); }).detach();
