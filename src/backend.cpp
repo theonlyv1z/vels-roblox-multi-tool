@@ -4170,4 +4170,61 @@ std::string UserSuggest(long long accountId, const std::string& raw) {
     return o + "]}";
 }
 
+static const char* kPrivacyKeys[] = { "whoCanSeeMyOnlineStatus", "whoCanJoinMeInExperiences", "privateServerPrivacy", "whoCanSeeMyInventory" };
+
+static std::string OptionValueOf(const json::Value& o) {
+    if (o.type == json::Value::String) return o.s;
+    std::string v = o["option"]["optionValue"].str();
+    if (v.empty()) v = o["optionValue"].str();
+    if (v.empty()) v = o["value"].str();
+    return v;
+}
+
+std::string PrivacyGet(long long accountId) {
+    std::string head = "{\"type\":\"privacy\",\"from\":" + std::to_string(accountId);
+    RobloxAccount a;
+    if (!AccountById(accountId, a) || a.cookie.empty()) return head + ",\"ok\":false,\"error\":\"No saved login for this account.\"}";
+    HttpResponse r = HttpRequest(L"apis.roblox.com", L"/user-settings-api/v1/user-settings/settings-and-options", L"GET", a.cookie, {}, "");
+    if (r.status == 401) return head + ",\"ok\":false,\"error\":\"This account's saved login has expired - re-add it.\"}";
+    json::Value root;
+    if (!r.ok || r.status != 200 || !json::Parse(r.body, root)) return head + ",\"ok\":false,\"error\":\"Couldn't read this account's privacy settings (HTTP " + std::to_string(r.status) + ").\"}";
+    HttpResponse cur = HttpRequest(L"apis.roblox.com", L"/user-settings-api/v1/user-settings", L"GET", a.cookie, {}, "");
+    json::Value cj;
+    bool haveCur = cur.ok && cur.status == 200 && json::Parse(cur.body, cj);
+    std::string o = head + ",\"ok\":true,\"settings\":{";
+    bool first = true;
+    for (const char* key : kPrivacyKeys) {
+        const json::Value& s = root[key];
+        if (s.type != json::Value::Object) continue;
+        std::string current = s["currentValue"].str();
+        if (current.empty() && haveCur) current = cj[key].str();
+        std::string opts;
+        for (const auto& opt : s["options"].a) {
+            std::string v = OptionValueOf(opt);
+            if (!v.empty()) opts += (opts.empty() ? "" : ",") + json::Quote(v);
+        }
+        o += std::string(first ? "" : ",") + json::Quote(key) + ":{\"current\":" + json::Quote(current) + ",\"options\":[" + opts + "]}";
+        first = false;
+    }
+    return o + "}}";
+}
+
+std::string PrivacySet(long long accountId, const std::string& key, const std::string& value) {
+    std::string head = "{\"type\":\"privacySet\",\"from\":" + std::to_string(accountId) + ",\"key\":" + json::Quote(key) + ",\"value\":" + json::Quote(value);
+    bool allowed = false;
+    for (const char* k : kPrivacyKeys) if (key == k) allowed = true;
+    bool valueOk = !value.empty() && std::all_of(value.begin(), value.end(), [](char c) { return std::isalnum((unsigned char)c); });
+    if (!allowed || !valueOk) return head + ",\"ok\":false,\"error\":\"That setting can't be changed here.\"}";
+    RobloxAccount a;
+    if (!AccountById(accountId, a) || a.cookie.empty()) return head + ",\"ok\":false,\"error\":\"No saved login for this account.\"}";
+    HttpResponse r = PostJsonAs(L"apis.roblox.com", L"/user-settings-api/v1/user-settings", a.cookie, "{" + json::Quote(key) + ":" + json::Quote(value) + "}");
+    if (r.status == 200) {
+        json::Value rj;
+        if (json::Parse(r.body, rj) && rj["settingUpdateBlocked"].type == json::Value::Bool && rj["settingUpdateBlocked"].b)
+            return head + ",\"ok\":false,\"error\":\"Roblox needs a parent to approve this change.\"}";
+        return head + ",\"ok\":true}";
+    }
+    return head + ",\"ok\":false,\"error\":" + json::Quote(RobloxErrorText(r.body, r.status)) + "}";
+}
+
 }

@@ -908,6 +908,13 @@ static void HandlePageMessage(const std::string& text) {
         if (text.empty()) return;
         if (CopyToClipboard(text)) backend::Log("[v] Copied the " + (what.empty() ? std::string("text") : what) + ".");
         else backend::Log("[!] Could not access the clipboard.");
+    } else if (cmd == "privacyGet") {
+        long long account = m["id"].i64();
+        std::thread([account]() { QueuePageMessage(backend::PrivacyGet(account)); }).detach();
+    } else if (cmd == "privacySet") {
+        long long account = m["id"].i64();
+        std::string key = m["key"].str(), value = m["value"].str();
+        std::thread([account, key, value]() { QueuePageMessage(backend::PrivacySet(account, key, value)); }).detach();
     } else if (cmd == "userSuggest") {
         long long account = m["userId"].i64();
         std::string q = m["q"].str();
