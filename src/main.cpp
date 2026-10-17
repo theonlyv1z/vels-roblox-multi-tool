@@ -903,6 +903,11 @@ static void HandlePageMessage(const std::string& text) {
         }
     } else if (cmd == "ownedPsRefresh") {
         backend::RefreshOwnedPrivateServers();
+    } else if (cmd == "placeIcons") {
+        std::vector<long long> ids;
+        for (const auto& v : m["ids"].a) if (v.i64() > 0 && ids.size() < 60) ids.push_back(v.i64());
+        if (ids.empty()) return;
+        std::thread([ids]() { QueuePageMessage(backend::PlaceIcons(ids)); }).detach();
     } else if (cmd == "copyText") {
         std::string text = m["text"].str(), what = m["what"].str();
         if (text.empty()) return;

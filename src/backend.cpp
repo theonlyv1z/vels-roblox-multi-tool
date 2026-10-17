@@ -4117,6 +4117,17 @@ std::string PlaceTag(long long placeId) {
     return "{{place:" + std::to_string(placeId) + "|" + name + "|" + icon + "}}";
 }
 
+std::string PlaceIcons(const std::vector<long long>& ids) {
+    std::vector<PlaceMetaInfo> metas(ids.size());
+    std::vector<std::thread> workers;
+    for (size_t i = 0; i < ids.size(); ++i) workers.emplace_back([&, i]() { metas[i] = PlaceMetaFor(ids[i]); });
+    for (auto& t : workers) t.join();
+    std::string o = "{\"type\":\"placeIcons\",\"icons\":{";
+    for (size_t i = 0; i < ids.size(); ++i)
+        o += std::string(i ? "," : "") + json::Quote(std::to_string(ids[i])) + ":{\"icon\":" + json::Quote(metas[i].icon) + ",\"game\":" + json::Quote(metas[i].name) + "}";
+    return o + "}}";
+}
+
 struct FriendName { long long id = 0; std::string name, display; };
 static std::mutex g_friendNamesMutex;
 static std::map<long long, std::pair<std::chrono::steady_clock::time_point, std::vector<FriendName>>> g_friendNames;
@@ -4265,7 +4276,18 @@ std::string PrivacySet(long long accountId, const std::string& key, const std::s
     if (!allowed || !valueOk) return head + ",\"ok\":false,\"error\":\"That setting can't be changed here.\"}";
     RobloxAccount a;
     if (!AccountById(accountId, a) || a.cookie.empty()) return head + ",\"ok\":false,\"error\":\"No saved login for this account.\"}";
-    HttpResponse r = PostJsonAs(L"apis.roblox.com", L"/user-settings-api/v1/user-settings", a.cookie, "{" + json::Quote(key) + ":" + json::Quote(value) + "}");
+    std::string tracker;
+    {
+        std::lock_guard<std::mutex> lk(launchedMutex);
+        auto t = launchedTrackers.find(accountId);
+        if (t != launchedTrackers.end()) tracker = t->second;
+    }
+    if (tracker.empty()) {
+        std::mt19937_64 rng(std::random_device{}());
+        tracker = std::to_string(1000000000000ULL + rng() % 8999999999999ULL);
+    }
+    std::string cookie = a.cookie + "; RBXEventTrackerV2=CreateDate=1/1/2026 12:00:00 AM&rbxid=" + std::to_string(accountId) + "&browserid=" + tracker;
+    HttpResponse r = PostJsonAs(L"apis.roblox.com", L"/user-settings-api/v1/user-settings", cookie, "{" + json::Quote(key) + ":" + json::Quote(value) + "}");
     if (r.status == 200) {
         json::Value rj;
         if (json::Parse(r.body, rj) && rj["settingUpdateBlocked"].type == json::Value::Bool && rj["settingUpdateBlocked"].b)

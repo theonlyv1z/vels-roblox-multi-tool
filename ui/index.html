@@ -359,6 +359,18 @@ body.is-dragging,body.is-dragging *{cursor:grabbing!important}
 .sp-head span{min-width:20px;height:18px;padding:0 6px;border-radius:9px;display:grid;place-items:center;background:#2a2112;border:1px solid #5a4520;color:var(--amber);font-size:10.5px;font-weight:800;font-variant-numeric:tabular-nums}
 .sp-sec{padding:7px 10px 3px;color:var(--dim);font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.08em}
 .sp-row.fv .t{color:#f6e2b8}
+.mi.sp-row{height:42px;gap:11px;padding-left:9px}
+.sp-thumb{position:relative;width:30px;height:30px;flex:none}
+.sp-thumb>img,.sp-thumb>.sp-ph{width:30px;height:30px;border-radius:8px;display:grid;place-items:center;object-fit:cover;background:#22252b;border:1px solid var(--line2);box-sizing:border-box}
+.sp-thumb>img.sp-in{animation:fade .25s}
+.sp-ph .i{width:12px;height:12px;color:var(--dim)}
+.sp-ph.load{background:linear-gradient(90deg,#1c1f25 25%,#2b2f38 50%,#1c1f25 75%);background-size:200% 100%;animation:rbshim 1.15s linear infinite}
+.sp-ph.load .i{opacity:0}
+.mi .sp-star{position:absolute;top:-6px;right:-7px;width:17px;height:17px;margin:0;border-radius:50%;background:#16181d;border:1px solid var(--line2);color:var(--dim);transition:transform .15s,background .15s,border-color .15s}
+.mi .sp-star .i{width:10px;height:10px}
+.mi .sp-star:hover{background:#2a2112;border-color:#5a4520;color:var(--amber);transform:scale(1.15)}
+.mi .sp-star.on{background:#2a2112;border-color:#7a5d27;color:var(--amber)}
+.sp-row.active .sp-thumb>img,.sp-row.active .sp-thumb>.sp-ph{border-color:#7a5d27;box-shadow:0 0 0 1px #f2b55233}
 .sp-row.active{background:linear-gradient(90deg,#2a2112,#1d1a14 70%)}
 .sp-row.active::before{background:var(--amber)}
 .sp-row.active .meta{color:#b8955a}
@@ -1737,6 +1749,35 @@ function robuxConfirm(from, r, amount, typed) {
       send('robuxSend', { from, to: r.to.id, amount });
     };
   });
+}
+
+let placeIconCache = {};
+try { placeIconCache = JSON.parse(localStorage.getItem('vmt.placeIcons') || '{}') || {}; } catch {}
+const placeIconAsked = new Set();
+function placeThumb(id) {
+  const c = placeIconCache[id];
+  return c && c.icon ? `<img data-pic="${id}" src="${esc(c.icon)}" alt="" loading="lazy">` : `<i data-pic="${id}" class="sp-ph${c ? '' : ' load'}">${icon('play')}</i>`;
+}
+function requestPlaceIcons(ids) {
+  const need = ids.filter(id => id > 0 && !placeIconCache[id] && !placeIconAsked.has(id));
+  if (!need.length) return;
+  need.forEach(id => placeIconAsked.add(id));
+  send('placeIcons', { ids: need });
+}
+function onPlaceIcons(m) {
+  Object.entries(m.icons || {}).forEach(([id, v]) => {
+    placeIconAsked.delete(+id);
+    if (!v.icon) { placeIconCache[id] = { icon: '', miss: 1 }; $$(`[data-pic="${id}"]`).forEach(el => el.classList.remove('load')); return; }
+    placeIconCache[id] = { icon: v.icon, game: v.game };
+    $$(`[data-pic="${id}"]`).forEach(el => {
+      if (el.tagName === 'IMG') { el.src = v.icon; return; }
+      const img = document.createElement('img');
+      img.dataset.pic = id; img.alt = ''; img.className = 'sp-in';
+      img.src = v.icon;
+      el.replaceWith(img);
+    });
+  });
+  try { localStorage.setItem('vmt.placeIcons', JSON.stringify(Object.fromEntries(Object.entries(placeIconCache).filter(([, v]) => v.icon)))); } catch {}
 }
 
 let privacyCb = null;
@@ -3229,8 +3270,9 @@ $('#btnRejoin').onclick = () => { if (S && S.lastServer && S.lastServer.has) sen
 
 $('#btnSavedPlaces').onclick = e => openPopover(e.currentTarget, pop => {
   pop.classList.add('sp-pop');
+  requestPlaceIcons(S.savedPlaces.map(p => p.id));
   const favs = S.savedPlaces.filter(p => p.favorite), rest = S.savedPlaces.filter(p => !p.favorite);
-  const row = (p, i) => `<div class="mi sp-row${p.id === S.placeId ? ' active' : ''}${p.favorite ? ' fv' : ''}" data-id="${p.id}" style="animation-delay:${Math.min(i, 10) * 25}ms"><button class="fav${p.favorite ? ' on' : ''}" data-fav title="${p.favorite ? 'Remove from favourites' : 'Favourite'}">${icon('star')}</button><span class="t">${esc(p.name || '(unnamed)')}</span><span class="meta">${p.id}</span><button class="x" data-ren title="Rename">${icon('pencil')}</button><button class="x" data-del title="Remove">${icon('x')}</button></div>`;
+  const row = (p, i) => `<div class="mi sp-row${p.id === S.placeId ? ' active' : ''}${p.favorite ? ' fv' : ''}" data-id="${p.id}" style="animation-delay:${Math.min(i, 10) * 25}ms"><span class="sp-thumb">${placeThumb(p.id)}<button class="sp-star fav${p.favorite ? ' on' : ''}" data-fav title="${p.favorite ? 'Saved & favourited - click to unfavourite' : 'Saved - click to favourite'}">${icon('star')}</button></span><span class="t">${esc(p.name || '(unnamed)')}</span><span class="meta">${p.id}</span><button class="x" data-ren title="Rename">${icon('pencil')}</button><button class="x" data-del title="Remove">${icon('x')}</button></div>`;
   const cur = S.savedPlaces.find(p => p.id === S.placeId);
   let n = 0;
   pop.innerHTML = `<div class="sp-head">${icon('star')}<b>Saved games</b><span>${S.savedPlaces.length}</span></div><div class="pop-list">${S.savedPlaces.length
@@ -3437,6 +3479,7 @@ if (!DEMO) {
     else if (m.type === 'robuxLookup') { if (robuxLookupCb) robuxLookupCb(m); }
     else if (m.type === 'userSuggest') { if (frSuggCb) frSuggCb(m); }
     else if (m.type === 'privacy' || m.type === 'privacySet') { if (privacyCb) privacyCb(m); }
+    else if (m.type === 'placeIcons') onPlaceIcons(m);
     else if (m.type === 'needChrome') { $('#loginWait').classList.remove('show'); chromeModal(m.what); }
     else if (m.type === 'relaunch') {
       if (m.stage === 'pending') showHandoff('Waiting for administrator approval', 'Accept the Windows prompt to continue.');

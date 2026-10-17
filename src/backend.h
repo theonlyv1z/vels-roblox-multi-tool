@@ -184,6 +184,7 @@ std::string RobuxSend(long long fromId, long long toId, long long amount);
 std::string RobuxInfo(long long fromId);
 std::string RobuxLookup(const std::string& query);
 std::string PlaceTag(long long placeId);
+std::string PlaceIcons(const std::vector<long long>& ids);
 std::string UserSuggest(long long accountId, const std::string& query);
 void LoadRunningClients();
 std::string PrivacyGet(long long accountId);
