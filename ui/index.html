@@ -271,7 +271,7 @@ b,strong{font-weight:700}
 .acc-h .search{max-width:230px;height:32px;flex:0 1 230px}
 .selinfo{color:var(--muted);font-size:12px;margin-right:4px;white-space:nowrap}
 .selinfo b{color:var(--text)}
-.cols{display:grid;grid-template-columns:22px 24px 30px minmax(0,1fr) 62px 104px;align-items:center;column-gap:8px}
+.cols{display:grid;grid-template-columns:22px 24px 30px minmax(0,1fr) 62px 140px;align-items:center;column-gap:8px}
 .thead{height:34px;padding:0 20px;border-bottom:1px solid var(--line);color:var(--dim);font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;background:var(--bg2);flex:none}
 .thead .r{text-align:right}
 .thead .c{text-align:center}
@@ -552,7 +552,7 @@ h1,h2,h3,.place-name,.load-title{font-family:"Segoe UI Variable Display","Segoe 
 
 @media (max-width:1320px){.hide-md{display:none!important}}
 @media (max-width:1180px){
-  .cols{grid-template-columns:22px 24px 30px minmax(0,1fr) 56px 104px}
+  .cols{grid-template-columns:22px 24px 30px minmax(0,1fr) 56px 140px}
   .stats{display:none}
   .layout{grid-template-columns:330px minmax(0,1fr)}
 }
@@ -610,6 +610,34 @@ html[data-density="compact"] .thead{height:28px}
 .fr-sg-tag{flex:none;height:18px;padding:0 7px;border-radius:9px;font-size:10px;font-weight:800;display:inline-flex;align-items:center;background:#0f1c16;border:1px solid #1f5a3f;color:var(--green)}
 .fr-sg-tag.rec{background:#1f2127;border-color:var(--line2);color:var(--muted)}
 .rb-recent{margin:8px 0 0}
+.pv-pop{padding:6px}
+.pvp-h{display:flex;align-items:center;gap:8px;padding:4px 6px 8px;margin-bottom:4px;border-bottom:1px solid var(--line)}
+.pvp-h .mi-av{width:22px;height:22px;border-radius:50%;flex:none;display:grid;place-items:center;object-fit:cover;background:#22252b;font-size:10px;font-weight:800;color:var(--muted)}
+.pvp-h b{flex:1;min-width:0;font-size:12.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pvp-h span{color:var(--dim);font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.07em}
+.pvp-row{display:flex;align-items:center;gap:9px;width:100%;padding:7px 8px;border:0;border-radius:8px;background:none;color:var(--text);font:inherit;cursor:pointer;text-align:left;transition:background .12s}
+.pvp-row:hover:not(:disabled),.pvp-row.open{background:var(--hover)}
+.pvp-row:disabled{cursor:default}
+.pvp-ic{width:26px;height:26px;border-radius:8px;display:grid;place-items:center;flex:none;background:var(--panel2);border:1px solid var(--line2);color:var(--soft)}
+.pvp-ic .i{width:13px;height:13px}
+.pvp-t{flex:1;min-width:0;font-size:12.5px;font-weight:650;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pvp-v{color:var(--muted);font-size:12px;font-weight:600;white-space:nowrap}
+.pvp-v .spin{width:12px;height:12px}
+.pvp-chev{display:grid;place-items:center;color:var(--dim);transition:transform .18s}
+.pvp-chev .i{width:12px;height:12px}
+.pvp-row.open .pvp-chev{transform:rotate(180deg)}
+.pvp-opts{display:flex;flex-direction:column;gap:1px;margin:2px 0 6px 21px;padding-left:12px;border-left:1px solid var(--line2);animation:pvp-open .18s ease-out}
+@keyframes pvp-open{from{opacity:0;transform:translateY(-4px)}}
+.pvp-opt{display:flex;align-items:center;gap:8px;padding:6px 8px;border:0;border-radius:7px;background:none;color:var(--soft);font:inherit;font-size:12px;font-weight:600;cursor:pointer;text-align:left;transition:background .1s,color .1s}
+.pvp-opt:hover{background:var(--hover);color:var(--text)}
+.pvp-opt.on{color:var(--text);font-weight:750}
+.pvp-opt .i,.pvp-opt>i{width:13px;height:13px;flex:none}
+.pvp-opt .i{color:var(--green)}
+.pvp-err{margin:6px 4px 2px;color:#f07070;font-size:11.5px}
+.pvp-row.skel{display:flex;flex-direction:column;align-items:flex-start;gap:7px;padding:10px 8px;cursor:default}
+.pvp-row.skel i{display:block;height:8px;border-radius:4px;background:linear-gradient(90deg,#1c1f25 25%,#2b2f38 50%,#1c1f25 75%);background-size:200% 100%;animation:rbshim 1.15s linear infinite}
+.pvp-row.skel i:first-child{width:45%}
+.pvp-row.skel i:last-child{width:70%;height:6px}
 .pv-who{display:flex;align-items:center;gap:11px;padding:10px 12px;margin:6px 0 12px;border-radius:11px;border:1px solid var(--line2);background:var(--bg2)}
 .pv-who .mi-av{width:34px;height:34px;border-radius:50%;flex:none;display:grid;place-items:center;object-fit:cover;background:#22252b;font-weight:800;color:var(--muted)}
 .pv-who b{display:block;font-size:13.5px}
@@ -1330,6 +1358,7 @@ function rowHTML(a, i) {
     <div class="row-act">
       <button class="btn icon sm play" data-act="launch" title="Launch into the current place">${icon('play')}</button>
       <button class="btn icon sm" data-act="web" title="Open in browser">${icon('globe')}</button>
+      <button class="btn icon sm" data-act="privacy" title="Privacy settings">${icon('lock')}</button>
       <button class="btn icon sm" data-act="more" title="More">${icon('more')}</button>
     </div></div>`;
 }
@@ -1694,6 +1723,58 @@ const PRIVACY_ROWS = [
 const PRIVACY_LABELS = { All: 'Everyone', AllUsers: 'Everyone', Everyone: 'Everyone', Friends: 'Friends', FriendsAndFollowing: 'Friends & following', FriendsFollowingAndFollowers: 'Friends, following & followers', Following: 'People I follow', Followers: 'Followers', NoOne: 'No one', TrustedFriends: 'Trusted friends', Connections: 'Connections' };
 const privacyLabel = v => PRIVACY_LABELS[v] || String(v || '').replace(/([a-z])([A-Z])/g, '$1 $2');
 
+function privacyPopover(anchor, id) {
+  const a = accById(id);
+  if (!a) return;
+  let data = null, open = '';
+  const pop = openPopover(anchor, p => p.classList.add('pv-pop'), { width: 300, alignRight: true });
+  if (!pop) return;
+  const fit = () => {
+    const r = pop.getBoundingClientRect(), ar = anchor.getBoundingClientRect();
+    if (r.bottom > innerHeight - 8) pop.style.top = Math.max(8, Math.min(ar.top - r.height - 6, innerHeight - 8 - r.height)) + 'px';
+  };
+  const draw = () => {
+    let h = `<div class="pvp-h">${accAvatar(a)}<b class="anon-t">${esc(a.alias || a.username)}</b><span>Privacy</span></div>`;
+    if (!data) h += PRIVACY_ROWS.map(() => '<div class="pvp-row skel"><i></i><i></i></div>').join('');
+    else if (!data.ok) h += `<div class="pvp-err">${esc(data.error || 'Could not load the settings.')}</div>`;
+    else h += PRIVACY_ROWS.filter(([k]) => data.settings[k]).map(([k, ic, title]) => {
+      const s = data.settings[k], isOpen = open === k;
+      return `<button class="pvp-row${isOpen ? ' open' : ''}" data-pv="${k}" ${s.busy || !s.options.length ? 'disabled' : ''}>
+          <span class="pvp-ic">${icon(ic)}</span><span class="pvp-t">${title}</span>
+          <span class="pvp-v">${s.busy ? '<span class="spin"></span>' : esc(privacyLabel(s.current))}</span><span class="pvp-chev">${icon('chevron')}</span></button>` +
+        (isOpen ? `<div class="pvp-opts">${s.options.map(v => `<button class="pvp-opt${v === s.current ? ' on' : ''}" data-pvk="${k}" data-pvv="${esc(v)}">${v === s.current ? icon('check') : '<i></i>'}<span>${esc(privacyLabel(v))}</span></button>`).join('')}</div>` : '');
+    }).join('');
+    if (data && data.lastError) h += `<div class="pvp-err">${esc(data.lastError)}</div>`;
+    pop.innerHTML = h;
+    fit();
+  };
+  const choose = (k, v) => {
+    const s = data && data.settings[k];
+    open = '';
+    if (!s || v === s.current) { draw(); return; }
+    const prev = s.current;
+    s.current = v; s.busy = true; data.lastError = '';
+    draw();
+    privacyCb = r => {
+      if (r.type !== 'privacySet' || r.key !== k || r.from !== id) return;
+      s.busy = false;
+      if (r.ok) toast('ok', `${PRIVACY_ROWS.find(x => x[0] === k)[2]} set to ${privacyLabel(v)} for ${a.alias || a.username}.`);
+      else { s.current = prev; data.lastError = r.error || 'Roblox did not accept that change.'; }
+      if (pop.isConnected) draw();
+    };
+    send('privacySet', { id, key: k, value: v });
+  };
+  pop.addEventListener('click', e => {
+    const opt = e.target.closest('[data-pvv]');
+    if (opt) { choose(opt.dataset.pvk, opt.dataset.pvv); return; }
+    const row = e.target.closest('[data-pv]');
+    if (row && !row.disabled) { open = open === row.dataset.pv ? '' : row.dataset.pv; draw(); }
+  });
+  privacyCb = r => { if (r.type === 'privacy' && r.from === id && pop.isConnected) { data = r; draw(); } };
+  draw();
+  send('privacyGet', { id });
+}
+
 function privacyModal(id) {
   const a = accById(id);
   if (!a) return;
@@ -1922,6 +2003,7 @@ listEl.addEventListener('click', e => {
   if (act === 'pri') { const a = accById(id); send('priority', { ids: [id], value: !a.priority }); return; }
   if (act === 'launch') { send('launch', { ids: [id] }); return; }
   if (act === 'web') { send('browser', { ids: [id] }); return; }
+  if (act === 'privacy') { privacyPopover(actEl, id); return; }
   if (act === 'more') { openRowMenu(actEl, id); return; }
   toggleRow(id, e.shiftKey);
 });
