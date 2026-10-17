@@ -179,6 +179,19 @@ b,strong{font-weight:700}
 .spin{width:13px;height:13px;border:2px solid #ffffff22;border-top-color:#fff;border-radius:50%;animation:spin .7s linear infinite;flex:none;margin-right:4px}
 @keyframes spin{to{transform:rotate(360deg)}}
 
+.add-row{display:flex;align-items:center;justify-content:space-between;gap:10px;height:52px;margin-top:6px;padding:0 10px 0 16px;border-radius:10px;border:1px dashed var(--line2);color:var(--muted);transition:border-color .15s,background .15s}
+.add-row:hover{border-color:#3a3e47;background:#14161a}
+.add-row.anim{animation:addrow-in .38s cubic-bezier(.3,.7,.3,1)}
+@keyframes addrow-in{from{opacity:0;transform:translateY(8px)}}
+.add-row-l{display:flex;align-items:center;gap:9px;font-size:12.5px;font-weight:700;white-space:nowrap}
+.add-row-l .i{width:16px;height:16px;padding:3px;border-radius:7px;background:var(--bg2);border:1px solid var(--line2);box-sizing:content-box}
+.add-row-r{display:flex;gap:6px;min-width:0}
+.add-pill{display:inline-flex;align-items:center;gap:6px;height:30px;padding:0 11px;border-radius:8px;border:1px solid var(--line2);background:var(--panel2);color:var(--text);font:inherit;font-size:12px;font-weight:650;cursor:pointer;white-space:nowrap;transition:background .12s,border-color .12s,transform .1s}
+.add-pill:hover{background:var(--hover);border-color:#3a3e47}
+.add-pill:active{transform:scale(.96)}
+.add-pill .i{width:14px;height:14px}
+.add-pill.g .i{color:var(--green)}.add-pill.a .i{color:var(--amber)}.add-pill.b .i{color:var(--blue)}
+@media (max-width:1180px){.add-pill{padding:0 9px}.add-row-l{font-size:0;gap:0}.add-row-l .i{font-size:12px}}
 .add-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
 .tile{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:7px;height:70px;border-radius:11px;border:1px solid var(--line2);background:var(--panel2);cursor:pointer;font-weight:650;font-size:12px;transition:background .12s,border-color .12s,transform .06s}
 .tile:hover{background:var(--hover);border-color:#3a3e47}
@@ -1303,6 +1316,7 @@ function rowHTML(a, i) {
     </div></div>`;
 }
 
+let addRowAnimated = false;
 function renderAccounts() {
   const list = $('#list');
   $('#accCount').textContent = S.accounts.length;
@@ -1313,8 +1327,16 @@ function renderAccounts() {
       <div class="row2"><button class="btn good" data-empty="login">${icon('login')}Browser login</button><button class="btn" data-empty="paste">${icon('clipboard')}Paste cookies</button></div></div>`);
   } else {
     const vis = visibleAccounts();
-    setHTML(list, vis.length ? vis.map(({ a, i }) => rowHTML(a, i)).join('')
+    const addRow = filter.trim() ? '' : `<div class="add-row${addRowAnimated ? '' : ' anim'}">
+        <span class="add-row-l">${icon('plus')}Add account</span>
+        <span class="add-row-r">
+          <button class="add-pill g" data-add="login" title="Sign in through the browser">${icon('login')}Browser login</button>
+          <button class="add-pill a" data-add="paste" title="Paste .ROBLOSECURITY cookies">${icon('clipboard')}Paste cookies</button>
+          <button class="add-pill b" data-add="file" title="Load cookies from a file">${icon('file')}Load file</button>
+        </span></div>`;
+    setHTML(list, vis.length ? vis.map(({ a, i }) => rowHTML(a, i)).join('') + addRow
       : `<div class="empty small">No accounts match “${esc(filter.trim())}”</div>`);
+    if (addRow) addRowAnimated = true;
   }
   updateSelectionUI();
 }
@@ -1814,6 +1836,8 @@ document.addEventListener('keydown', e => { if (e.key === 'Escape' && selDrag) e
 
 listEl.addEventListener('click', e => {
   if (suppressClick) { suppressClick = false; return; }
+  const addBtn = e.target.closest('[data-add]');
+  if (addBtn) { ({ login: '#btnLogin', paste: '#btnPaste', file: '#btnFile' })[addBtn.dataset.add] && $(({ login: '#btnLogin', paste: '#btnPaste', file: '#btnFile' })[addBtn.dataset.add]).click(); return; }
   const emptyBtn = e.target.closest('[data-empty]');
   if (emptyBtn) { emptyBtn.dataset.empty === 'login' ? send('login') : pasteModal(); return; }
   const row = e.target.closest('.row');
