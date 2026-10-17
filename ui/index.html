@@ -645,7 +645,7 @@ html[data-density="compact"] .thead{height:28px}
 .fr-sg-tag{flex:none;height:18px;padding:0 7px;border-radius:9px;font-size:10px;font-weight:800;display:inline-flex;align-items:center;background:#0f1c16;border:1px solid #1f5a3f;color:var(--green)}
 .fr-sg-tag.rec{background:#1f2127;border-color:var(--line2);color:var(--muted)}
 .rb-recent{margin:8px 0 0}
-.pv-pop{padding:6px}
+.pv-pop{padding:6px;overflow-y:auto;overscroll-behavior:contain;scrollbar-width:thin}
 .pvp-h{display:flex;align-items:center;gap:8px;padding:4px 6px 8px;margin-bottom:4px;border-bottom:1px solid var(--line)}
 .pvp-h .mi-av{width:22px;height:22px;border-radius:50%;flex:none;display:grid;place-items:center;object-fit:cover;background:#22252b;font-size:10px;font-weight:800;color:var(--muted)}
 .pvp-h b{flex:1;min-width:0;font-size:12.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -1796,9 +1796,22 @@ function privacyPopover(anchor, id) {
   let data = null, open = '';
   const pop = openPopover(anchor, p => p.classList.add('pv-pop'), { width: 300, alignRight: true });
   if (!pop) return;
+  let top = 0;
   const fit = () => {
-    const r = pop.getBoundingClientRect(), ar = anchor.getBoundingClientRect();
-    if (r.bottom > innerHeight - 8) pop.style.top = Math.max(8, Math.min(ar.top - r.height - 6, innerHeight - 8 - r.height)) + 'px';
+    const ar = anchor.getBoundingClientRect();
+    if (!top || (!data && !pop.querySelector('.pvp-opts'))) {
+      pop.style.maxHeight = 'none';
+      const h = Math.max(pop.offsetHeight, data ? 0 : 270);
+      top = ar.bottom + 6 + h <= innerHeight - 8 ? ar.bottom + 6 : Math.max(8, Math.min(ar.top - 6, innerHeight - 8) - h);
+    }
+    pop.style.top = top + 'px';
+    pop.style.maxHeight = (innerHeight - 8 - top) + 'px';
+    const o = pop.querySelector('.pvp-opts');
+    if (o) {
+      const row = o.previousElementSibling;
+      const want = Math.min(o.offsetTop + o.offsetHeight + 6 - pop.clientHeight, row.offsetTop - 6);
+      if (want > pop.scrollTop) pop.scrollTo({ top: want, behavior: 'smooth' });
+    }
   };
   const draw = () => {
     let h = `<div class="pvp-h">${accAvatar(a)}<b class="anon-t">${esc(a.alias || a.username)}</b><span>Privacy</span></div>`;
@@ -1812,7 +1825,9 @@ function privacyPopover(anchor, id) {
         (isOpen ? `<div class="pvp-opts">${s.options.map(v => { const lk = (s.locked || []).includes(v) && v !== s.current; return `<button class="pvp-opt${v === s.current ? ' on' : ''}" data-pvk="${k}" data-pvv="${esc(v)}" ${lk ? 'disabled title="Needs parent approval on Roblox"' : ''}>${v === s.current ? icon('check') : '<i></i>'}<span>${esc(privacyLabel(v))}</span>${lk ? '<em class="pvp-lock">Parent</em>' : ''}</button>`; }).join('')}</div>` : '');
     }).join('');
     if (data && data.lastError) h += `<div class="pvp-err">${esc(data.lastError)}</div>`;
+    const keep = pop.scrollTop;
     pop.innerHTML = h;
+    pop.scrollTop = keep;
     fit();
   };
   const choose = (k, v) => {
