@@ -348,6 +348,29 @@ body.is-dragging,body.is-dragging *{cursor:grabbing!important}
 .mi .x:hover{color:var(--red);background:#2a1618}
 .mi .x .i{width:13px;height:13px;color:inherit}
 .sep{height:1px;background:var(--line);margin:5px 4px}
+.btn.sp-btn .i{color:var(--amber);transition:fill .2s,transform .2s}
+.btn.sp-btn:hover .i{transform:rotate(-12deg) scale(1.1)}
+.btn.sp-btn.on{color:#f6d79a;border-color:#5a4520;background:#1d170d}
+.btn.sp-btn.on .i{fill:var(--amber)}
+.btn.sp-btn.on:hover{border-color:#7a5d27;background:#251c0f}
+.sp-head{display:flex;align-items:center;gap:8px;padding:6px 8px 8px;margin-bottom:3px;border-bottom:1px solid var(--line)}
+.sp-head .i{width:14px;height:14px;color:var(--amber);fill:var(--amber)}
+.sp-head b{flex:1;font-size:12.5px}
+.sp-head span{min-width:20px;height:18px;padding:0 6px;border-radius:9px;display:grid;place-items:center;background:#2a2112;border:1px solid #5a4520;color:var(--amber);font-size:10.5px;font-weight:800;font-variant-numeric:tabular-nums}
+.sp-sec{padding:7px 10px 3px;color:var(--dim);font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.08em}
+.sp-row.fv .t{color:#f6e2b8}
+.sp-row.active{background:linear-gradient(90deg,#2a2112,#1d1a14 70%)}
+.sp-row.active::before{background:var(--amber)}
+.sp-row.active .meta{color:#b8955a}
+.mi .fav.starpop .i{animation:starpop .45s var(--ease)}
+@keyframes starpop{0%{transform:scale(1)}35%{transform:scale(1.45) rotate(-15deg)}70%{transform:scale(.9)}100%{transform:scale(1)}}
+.sp-empty{display:flex;flex-direction:column;align-items:center;gap:4px;padding:16px 12px 14px;text-align:center}
+.sp-empty .i{width:22px;height:22px;color:#5a4520;margin-bottom:4px}
+.sp-empty b{font-size:12.5px}
+.sp-empty span{color:var(--dim);font-size:11.5px}
+.sp-pop .pop-form .field .i{color:var(--amber)}
+.btn.sp-save{color:var(--amber);border-color:#5a4520;background:#1d170d}
+.btn.sp-save:hover:not(:disabled){border-color:#7a5d27;background:#2a2112;color:#f6d79a}
 .pop-empty{padding:10px;color:var(--dim)}
 .pop-head{padding:6px 8px 2px;color:var(--dim);font-size:10.5px;text-transform:uppercase;letter-spacing:.07em}
 .theme-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px;padding:4px}
@@ -633,7 +656,9 @@ html[data-density="compact"] .thead{height:28px}
 .pvp-opt.on{color:var(--text);font-weight:750}
 .pvp-opt .i,.pvp-opt>i{width:13px;height:13px;flex:none}
 .pvp-opt .i{color:var(--green)}
-.pvp-err{margin:6px 4px 2px;color:#f07070;font-size:11.5px}
+.pvp-err{margin:6px 4px 2px;color:#f07070;font-size:11.5px;line-height:1.45}
+.pvp-opt:disabled{opacity:.45;cursor:not-allowed}
+.pvp-lock{margin-left:auto;font-style:normal;font-size:10px;font-weight:800;color:var(--dim);text-transform:uppercase;letter-spacing:.05em}
 .pvp-row.skel{display:flex;flex-direction:column;align-items:flex-start;gap:7px;padding:10px 8px;cursor:default}
 .pvp-row.skel i{display:block;height:8px;border-radius:4px;background:linear-gradient(90deg,#1c1f25 25%,#2b2f38 50%,#1c1f25 75%);background-size:200% 100%;animation:rbshim 1.15s linear infinite}
 .pvp-row.skel i:first-child{width:45%}
@@ -829,7 +854,7 @@ html[data-anon="on"] .pop .mi .t.anon-t{flex:1}
         <div class="card-h"><span data-i="gamepad"></span><h2>Launch Target</h2>
           <div class="right">
             <button class="btn icon sm ghost" id="btnOpenGame" data-i="external" title="Open the game page on Roblox"></button>
-            <button class="btn sm" id="btnSavedPlaces" data-i="bookmark"><span id="savedPlacesLbl">Saved</span></button>
+            <button class="btn sm sp-btn" id="btnSavedPlaces" data-i="star"><span id="savedPlacesLbl">Saved</span></button>
           </div>
         </div>
         <div class="place" id="placeHero"></div>
@@ -1216,6 +1241,7 @@ function renderPlace() {
   if (renderPlace.key !== heroKey) { renderPlace.key = heroKey; replay($('#placeHero'), 'swapin', 700); }
   const saved = S.savedPlaces.find(x => x.id === pid);
   $('#savedPlacesLbl').textContent = saved ? saved.name : 'Saved';
+  $('#btnSavedPlaces').classList.toggle('on', !!saved);
   $('#btnOpenGame').disabled = !(pid > 0);
 
   const nameInp = $('#placeName');
@@ -1742,7 +1768,7 @@ function privacyPopover(anchor, id) {
       return `<button class="pvp-row${isOpen ? ' open' : ''}" data-pv="${k}" ${s.busy || !s.options.length ? 'disabled' : ''}>
           <span class="pvp-ic">${icon(ic)}</span><span class="pvp-t">${title}</span>
           <span class="pvp-v">${s.busy ? '<span class="spin"></span>' : esc(privacyLabel(s.current))}</span><span class="pvp-chev">${icon('chevron')}</span></button>` +
-        (isOpen ? `<div class="pvp-opts">${s.options.map(v => `<button class="pvp-opt${v === s.current ? ' on' : ''}" data-pvk="${k}" data-pvv="${esc(v)}">${v === s.current ? icon('check') : '<i></i>'}<span>${esc(privacyLabel(v))}</span></button>`).join('')}</div>` : '');
+        (isOpen ? `<div class="pvp-opts">${s.options.map(v => { const lk = (s.locked || []).includes(v) && v !== s.current; return `<button class="pvp-opt${v === s.current ? ' on' : ''}" data-pvk="${k}" data-pvv="${esc(v)}" ${lk ? 'disabled title="Needs parent approval on Roblox"' : ''}>${v === s.current ? icon('check') : '<i></i>'}<span>${esc(privacyLabel(v))}</span>${lk ? '<em class="pvp-lock">Parent</em>' : ''}</button>`; }).join('')}</div>` : '');
     }).join('');
     if (data && data.lastError) h += `<div class="pvp-err">${esc(data.lastError)}</div>`;
     pop.innerHTML = h;
@@ -1766,7 +1792,7 @@ function privacyPopover(anchor, id) {
   };
   pop.addEventListener('click', e => {
     const opt = e.target.closest('[data-pvv]');
-    if (opt) { choose(opt.dataset.pvk, opt.dataset.pvv); return; }
+    if (opt) { if (!opt.disabled) choose(opt.dataset.pvk, opt.dataset.pvv); return; }
     const row = e.target.closest('[data-pv]');
     if (row && !row.disabled) { open = open === row.dataset.pv ? '' : row.dataset.pv; draw(); }
   });
@@ -1799,7 +1825,7 @@ function privacyModal(id) {
       if (!b || b.disabled || !data || !data.ok) return;
       const k = b.dataset.pick, s = data.settings[k];
       if (s.busy) return;
-      openMenu(b, s.options.map(v => ({ icon: v === s.current ? 'check' : 'dot', label: privacyLabel(v), active: v === s.current, on: () => {
+      openMenu(b, s.options.map(v => ({ icon: v === s.current ? 'check' : 'dot', label: privacyLabel(v), active: v === s.current, disabled: (s.locked || []).includes(v) && v !== s.current, meta: (s.locked || []).includes(v) && v !== s.current ? 'Parent' : '', on: () => {
         if (v === s.current) return;
         const prev = s.current;
         s.current = v; s.busy = true; err.hidden = true; draw();
@@ -3202,11 +3228,16 @@ $('#btnJoinServer').onclick = () => {
 $('#btnRejoin').onclick = () => { if (S && S.lastServer && S.lastServer.has) send('rejoinLast', { ids: orderedSelection() }); };
 
 $('#btnSavedPlaces').onclick = e => openPopover(e.currentTarget, pop => {
-  const list = [...S.savedPlaces].sort((a, b) => b.favorite - a.favorite);
-  pop.innerHTML = `<div class="pop-list">${list.length ? list.map(p =>
-    `<div class="mi${p.id === S.placeId ? ' active' : ''}" data-id="${p.id}"><button class="fav${p.favorite ? ' on' : ''}" data-fav title="${p.favorite ? 'Remove from favourites' : 'Favourite'}">${icon('star')}</button><span class="t">${esc(p.name || '(unnamed)')}</span><span class="meta">${p.id}</span><button class="x" data-ren title="Rename">${icon('pencil')}</button><button class="x" data-del title="Remove">${icon('x')}</button></div>`).join('')
-    : '<div class="pop-empty">No saved places yet</div>'}</div>
-    <div class="sep"></div><div class="pop-form"><div class="field">${icon('plus')}<input maxlength="60" placeholder="${S.placeId > 0 ? 'Name for place ' + S.placeId : 'Set a Place ID first'}" ${S.placeId > 0 ? '' : 'disabled'}></div><button class="btn sm good" ${S.placeId > 0 ? '' : 'disabled'}>Save</button></div>`;
+  pop.classList.add('sp-pop');
+  const favs = S.savedPlaces.filter(p => p.favorite), rest = S.savedPlaces.filter(p => !p.favorite);
+  const row = (p, i) => `<div class="mi sp-row${p.id === S.placeId ? ' active' : ''}${p.favorite ? ' fv' : ''}" data-id="${p.id}" style="animation-delay:${Math.min(i, 10) * 25}ms"><button class="fav${p.favorite ? ' on' : ''}" data-fav title="${p.favorite ? 'Remove from favourites' : 'Favourite'}">${icon('star')}</button><span class="t">${esc(p.name || '(unnamed)')}</span><span class="meta">${p.id}</span><button class="x" data-ren title="Rename">${icon('pencil')}</button><button class="x" data-del title="Remove">${icon('x')}</button></div>`;
+  const cur = S.savedPlaces.find(p => p.id === S.placeId);
+  let n = 0;
+  pop.innerHTML = `<div class="sp-head">${icon('star')}<b>Saved games</b><span>${S.savedPlaces.length}</span></div><div class="pop-list">${S.savedPlaces.length
+    ? (favs.length ? `<div class="sp-sec">Favourites</div>${favs.map(p => row(p, n++)).join('')}` : '') +
+      (rest.length ? `${favs.length ? '<div class="sp-sec">Saved</div>' : ''}${rest.map(p => row(p, n++)).join('')}` : '')
+    : `<div class="sp-empty">${icon('star')}<b>No saved games yet</b><span>Set a Place ID, name it below and hit Save.</span></div>`}</div>
+    <div class="sep"></div><div class="pop-form"><div class="field">${icon('star')}<input maxlength="60" placeholder="${S.placeId > 0 ? (cur ? 'Rename ' + (cur.name || S.placeId) : 'Name for place ' + S.placeId) : 'Set a Place ID first'}" ${S.placeId > 0 ? '' : 'disabled'}></div><button class="btn sm sp-save" ${S.placeId > 0 ? '' : 'disabled'}>${cur ? 'Update' : 'Save'}</button></div>`;
   pop.addEventListener('click', ev => {
     const mi = ev.target.closest('.mi[data-id]');
     if (!mi) return;
@@ -3214,6 +3245,8 @@ $('#btnSavedPlaces').onclick = e => openPopover(e.currentTarget, pop => {
     if (favEl) {
       const on = !favEl.classList.contains('on');
       favEl.classList.toggle('on', on);
+      mi.classList.toggle('fv', on);
+      replay(favEl, 'starpop', 450);
       send('favoritePlace', { id: +mi.dataset.id, value: on });
       return;
     }

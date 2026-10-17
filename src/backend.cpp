@@ -241,6 +241,7 @@ void Init(const std::wstring& exeDir) {
     std::thread(StartupUpdateCheck).detach();
     ScrubAndLockRobloxCookieFile("startup");
     HoldMultiRobloxMutex();
+    LoadRunningClients();
     StartPlusChecker();
     StartOwnedPsWatcher();
 }
@@ -1228,6 +1229,50 @@ static std::wstring GetProcessCommandLine(DWORD pid) {
 
 static std::map<long long, std::chrono::steady_clock::time_point> launchedAt;
 
+static std::wstring RunningFilePath() { return g_exeDir + L"\\running.dat"; }
+
+static unsigned long long ProcCreateTicks(DWORD pid) {
+    HANDLE h = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid);
+    if (!h) return 0;
+    FILETIME created, exited, kernel, user;
+    unsigned long long ticks = 0;
+    if (GetProcessTimes(h, &created, &exited, &kernel, &user))
+        ticks = ((unsigned long long)created.dwHighDateTime << 32) | created.dwLowDateTime;
+    CloseHandle(h);
+    return ticks;
+}
+
+static void SaveRunningLocked() {
+    std::string out;
+    for (auto& kv : launchedPids) {
+        auto t = launchedTrackers.find(kv.first);
+        std::string tracker = t != launchedTrackers.end() && !t->second.empty() ? t->second : "-";
+        out += std::to_string(kv.first) + " " + std::to_string(kv.second) + " " +
+               std::to_string(ProcCreateTicks((DWORD)kv.second)) + " " + tracker + "\n";
+    }
+    static std::string last = "\x01";
+    if (out == last) return;
+    last = out;
+    std::ofstream f(RunningFilePath().c_str(), std::ios::trunc | std::ios::binary);
+    f << out;
+}
+
+void LoadRunningClients() {
+    std::ifstream f(RunningFilePath().c_str());
+    std::string line;
+    std::lock_guard<std::mutex> lk(launchedMutex);
+    while (std::getline(f, line)) {
+        std::istringstream ss(line);
+        long long uid = 0;
+        unsigned long pid = 0;
+        unsigned long long ticks = 0;
+        std::string tracker;
+        if (!(ss >> uid >> pid >> ticks >> tracker) || uid <= 0) continue;
+        if (tracker != "-") launchedTrackers[uid] = tracker;
+        if (ticks && pid && ProcCreateTicks((DWORD)pid) == ticks) launchedPids[uid] = pid;
+    }
+}
+
 static std::map<DWORD, DWORD> RobloxParents() {
     std::map<DWORD, DWORD> out;
     HANDLE snap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
@@ -1315,6 +1360,7 @@ void PruneLaunchedPids() {
         }
         if (spare.size() == 1) launchedPids[missing[0]] = spare[0];
     }
+    SaveRunningLocked();
 }
 
 static void AssignLaunchedPid(long long userId, std::set<DWORD> before) {
@@ -4198,12 +4244,14 @@ std::string PrivacyGet(long long accountId) {
         if (s.type != json::Value::Object) continue;
         std::string current = s["currentValue"].str();
         if (current.empty() && haveCur) current = cj[key].str();
-        std::string opts;
+        std::string opts, locked;
         for (const auto& opt : s["options"].a) {
             std::string v = OptionValueOf(opt);
-            if (!v.empty()) opts += (opts.empty() ? "" : ",") + json::Quote(v);
+            if (v.empty()) continue;
+            opts += (opts.empty() ? "" : ",") + json::Quote(v);
+            if (opt["requirement"].str() == "ParentalConsent") locked += (locked.empty() ? "" : ",") + json::Quote(v);
         }
-        o += std::string(first ? "" : ",") + json::Quote(key) + ":{\"current\":" + json::Quote(current) + ",\"options\":[" + opts + "]}";
+        o += std::string(first ? "" : ",") + json::Quote(key) + ":{\"current\":" + json::Quote(current) + ",\"options\":[" + opts + "],\"locked\":[" + locked + "]}";
         first = false;
     }
     return o + "}}";
@@ -4224,7 +4272,20 @@ std::string PrivacySet(long long accountId, const std::string& key, const std::s
             return head + ",\"ok\":false,\"error\":\"Roblox needs a parent to approve this change.\"}";
         return head + ",\"ok\":true}";
     }
-    return head + ",\"ok\":false,\"error\":" + json::Quote(RobloxErrorText(r.body, r.status)) + "}";
+    std::string msg;
+    json::Value ej;
+    if (json::Parse(r.body, ej) && !ej["errors"].a.empty()) {
+        long long code = ej["errors"].a[0]["code"].i64(-1);
+        std::string m = ej["errors"].a[0]["message"].str();
+        if (key == "whoCanSeeMyInventory" && code == 1)
+            msg = "Roblox won't allow this: everyone who can trade with you must be able to see your inventory. Make \"Who can trade with me\" stricter on Roblox first, then try again.";
+        else if (code == 5) msg = "Too many changes too quickly - wait a minute and try again.";
+        else if (code == 7) msg = "Roblox has this setting turned off for this account right now.";
+        else if (!m.empty()) msg = m;
+    }
+    if (msg.empty() && r.status == 400) msg = "Roblox rejected that option for this account (it may need verification or parent approval).";
+    if (msg.empty()) msg = RobloxErrorText(r.body, r.status);
+    return head + ",\"ok\":false,\"error\":" + json::Quote(msg) + "}";
 }
 
 }

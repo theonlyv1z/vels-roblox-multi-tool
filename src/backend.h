@@ -185,6 +185,7 @@ std::string RobuxInfo(long long fromId);
 std::string RobuxLookup(const std::string& query);
 std::string PlaceTag(long long placeId);
 std::string UserSuggest(long long accountId, const std::string& query);
+void LoadRunningClients();
 std::string PrivacyGet(long long accountId);
 std::string PrivacySet(long long accountId, const std::string& key, const std::string& value);
 void ForceWindowedStart();
