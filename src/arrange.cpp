@@ -150,8 +150,6 @@ static std::vector<RbxWindow> FindRobloxWindows(bool withMinimised = true) {
 
 int CountRobloxWindows() { return (int)FindRobloxWindows().size(); }
 
-static int g_minW = 0, g_minH = 0;
-
 static int SlotStart(int lo, int hi, int size, int count, int index) {
     if (count <= 1) return lo + (hi - lo - size) / 2;
     return lo + (int)std::lround((double)(hi - lo - size) * index / (count - 1));
@@ -296,7 +294,11 @@ static int ArrangeImpl(const std::string& presetOverride, bool quiet, bool withM
         for (auto& w : wins) if (IsIconic(w.hwnd) || IsZoomed(w.hwnd)) restoring = true;
     }
 
-    auto rects = Layout(s.preset, W, n, s.gap, g_minW, g_minH);
+    // Smallest size each window turned out willing to take, learned during
+    // this arrange only. Keeping it between runs let one window that was
+    // still mid-resize pin every later layout to an oversized minimum.
+    int minW = 0, minH = 0;
+    auto rects = Layout(s.preset, W, n, s.gap, minW, minH);
     bool exact = false;
     for (int pass = 0; pass < 5 && !exact; ++pass) {
         for (int i = 0; i < n && i < (int)rects.size(); ++i)
@@ -309,19 +311,31 @@ static int ArrangeImpl(const std::string& presetOverride, bool quiet, bool withM
         }
         if (exact) break;
 
+        // Only a window that has stopped resizing tells us its real minimum.
+        // Moves are async, and a loading or just-restored client can still be
+        // shrinking, which used to read as "refuses to go smaller".
+        std::vector<RECT> before(n);
+        for (int i = 0; i < n; ++i) if (!VisibleFrame(wins[i].hwnd, before[i])) before[i] = {};
+        Sleep(150);
+
         int learnW = 0, learnH = 0;
+        int workW = W.right - W.left, workH = W.bottom - W.top;
         for (int i = 0; i < n && i < (int)rects.size(); ++i) {
             RECT f;
             if (!VisibleFrame(wins[i].hwnd, f)) continue;
+            if (!EqualRect(&f, &before[i])) continue;
             int fw = f.right - f.left, fh = f.bottom - f.top;
             int tw = rects[i].right - rects[i].left, th = rects[i].bottom - rects[i].top;
+            // A "minimum" as big as the whole display is a window that never
+            // took the move at all, not a real limit.
+            if (fw >= workW - s.gap * 2 || fh >= workH - s.gap * 2) continue;
             if (fw > tw + 1 && (learnW == 0 || fw < learnW)) learnW = fw;
             if (fh > th + 1 && (learnH == 0 || fh < learnH)) learnH = fh;
         }
-        if (learnW > g_minW || learnH > g_minH) {
-            g_minW = std::max(g_minW, learnW);
-            g_minH = std::max(g_minH, learnH);
-            rects = Layout(s.preset, W, n, s.gap, g_minW, g_minH);
+        if (learnW > minW || learnH > minH) {
+            minW = std::max(minW, learnW);
+            minH = std::max(minH, learnH);
+            rects = Layout(s.preset, W, n, s.gap, minW, minH);
         }
     }
 
