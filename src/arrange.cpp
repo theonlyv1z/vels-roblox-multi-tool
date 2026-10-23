@@ -1,4 +1,8 @@
 
+#ifndef _WIN32_WINNT
+#define _WIN32_WINNT 0x0A00
+#endif
+
 #include "backend.h"
 
 #include <windows.h>
@@ -150,6 +154,36 @@ static std::vector<RbxWindow> FindRobloxWindows(bool withMinimised = true) {
 
 int CountRobloxWindows() { return (int)FindRobloxWindows().size(); }
 
+// Roblox will not let its game area go below 800x600, scaled by the window's
+// DPI. Working that out up front means each window is moved once, straight to
+// a size it will accept, instead of being shrunk, snapping back, and then
+// being moved again, which is what made arranging look like it was glitching.
+static void RobloxMinimumFrame(const std::vector<RbxWindow>& wins, int& minW, int& minH) {
+    minW = minH = 0;
+    for (const auto& w : wins) {
+        UINT dpi = GetDpiForWindow(w.hwnd);
+        if (dpi == 0) dpi = 96;
+        int clientW = MulDiv(800, (int)dpi, 96), clientH = MulDiv(600, (int)dpi, 96);
+
+        int extraW = 0, extraH = 0;
+        RECT frame, client;
+        if (!IsIconic(w.hwnd) && GetClientRect(w.hwnd, &client) &&
+            SUCCEEDED(DwmGetWindowAttribute(w.hwnd, DWMWA_EXTENDED_FRAME_BOUNDS, &frame, sizeof(frame)))) {
+            extraW = std::max(0L, (frame.right - frame.left) - client.right);
+            extraH = std::max(0L, (frame.bottom - frame.top) - client.bottom);
+        } else {
+            RECT adj = { 0, 0, clientW, clientH };
+            if (AdjustWindowRectExForDpi(&adj, WS_OVERLAPPEDWINDOW, FALSE, 0, dpi)) {
+                extraH = (adj.bottom - adj.top) - clientH;
+            }
+        }
+        // A few pixels of headroom: Roblox rounds its minimum up slightly, and
+        // aiming even 2px under it brings back the snap-and-move-again.
+        minW = std::max(minW, clientW + extraW + 4);
+        minH = std::max(minH, clientH + extraH + 4);
+    }
+}
+
 static int SlotStart(int lo, int hi, int size, int count, int index) {
     if (count <= 1) return lo + (hi - lo - size) / 2;
     return lo + (int)std::lround((double)(hi - lo - size) * index / (count - 1));
@@ -294,10 +328,10 @@ static int ArrangeImpl(const std::string& presetOverride, bool quiet, bool withM
         for (auto& w : wins) if (IsIconic(w.hwnd) || IsZoomed(w.hwnd)) restoring = true;
     }
 
-    // Smallest size each window turned out willing to take, learned during
-    // this arrange only. Keeping it between runs let one window that was
-    // still mid-resize pin every later layout to an oversized minimum.
+    // Start from Roblox's known minimum so the first placement already sticks.
+    // Anything still refusing after that is learned for this arrange only.
     int minW = 0, minH = 0;
+    RobloxMinimumFrame(wins, minW, minH);
     auto rects = Layout(s.preset, W, n, s.gap, minW, minH);
     bool exact = false;
     for (int pass = 0; pass < 5 && !exact; ++pass) {
